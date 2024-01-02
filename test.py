@@ -7,8 +7,7 @@ import h5py as h5
 import os
 import glob
 
-
-def load_data(work=True):
+def load_data(work):
     if work: # whether at work or not
         file_path = 'images/DATASET1-1.h5'
     else:
@@ -22,10 +21,9 @@ def load_data(work=True):
     try:
         with h5.File(file_path, 'r') as f:
             data = f['entry/data/data'][:]
-        return data
+        return data, file_path
     except Exception as e:
         raise OSError(f"Failed to read {file_path}: {e}")
-    return file_path
 
 def main():
     work = False # load home image

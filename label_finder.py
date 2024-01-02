@@ -8,13 +8,13 @@ class PeakThresholdProcessor:
     def __init__(self, image_array, threshold_value=0):
         self.image_array = image_array
         self.threshold_value = threshold_value
-        
     
     def set_threshold_value(self, new_threshold_value):
         self.threshold_value = new_threshold_value
     
     def get_coordinates_above_threshold(self):  
-        return np.argwhere(self.image_array > self.threshold_value)
+        coordinates = np.argwhere(self.image_array > self.threshold_value)
+        return coordinates
 
 class ArrayRegion:
     def __init__(self, array):
@@ -41,12 +41,15 @@ class ArrayRegion:
     
 def load_file_h5(file_path):
     try:
-        work = False       
-        load_data() # from test.py in peakfinder_ml
+        with h5.File(file_path, "r") as f:
+            data = np.array(f["entry/data/data"][()])
+            print("File loaded successfully.")
+            return data
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
     except Exception as e:
-        print("\nAn error has occurred:", str(e))
-    with h5.File(file_path, "r") as f:
-        return np.array(f["entry/data/data"][()])
+        print(f"An error occurred while loading the file: {str(e)}")
+    return None
                
 def extract_region(image_array, region_size, x_center, y_center):
     extract = ArrayRegion(image_array)
@@ -58,16 +61,16 @@ def extract_region(image_array, region_size, x_center, y_center):
     return region        
     
 def display_peak_regions(image_array, coordinates, region_size=3):
-    region_viewer = ArrayRegion(image_array)
+    region = ArrayRegion(image_array)
     for i, (x, y) in enumerate(coordinates, 1):
-        region = region_viewer.get_region(x, y, region_size)
+        region = extract_region(image_array, region_size, x, y)
         plt.imshow(region, cmap='viridis')
         plt.title(f"Peak {i} at ({x}, {y})")
         plt.colorbar(label='Intensity')
         plt.show()
 
-def main(filename, threshold_value):
-    image_array = load_file_h5(filename)
+def main(file_path, threshold_value):
+    image_array = load_file_h5(file_path) # load_file_h5
     threshold_processor = PeakThresholdProcessor(image_array, threshold_value)
     coordinates = threshold_processor.get_coordinates_above_threshold()
     display_peak_regions(image_array, coordinates, region_size=5)
@@ -77,6 +80,6 @@ def main(filename, threshold_value):
 
 if __name__ == "__main__":
     work = False
-    file_path = load_data(work)
+    image_data, file_path = load_data(work) # from test.py in peakfinder_ml
     threshold = 1000
     main(file_path, threshold)
