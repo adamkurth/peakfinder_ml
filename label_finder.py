@@ -183,9 +183,8 @@ def view_neighborhood(coordinates, image_data):
         except Exception as e:
             print(f"An error occurred: {str(e)}")
             
-def generate_labeled_image(image_data, peak_coordinates, neighborhood_size=5):
+def generate_labeled_image(image_data, peak_coordinates, neighborhood_size):
     labeled_image = np.zeros_like(image_data)
-
     for (x, y) in peak_coordinates:
         if is_peak(image_data, (x, y), neighborhood_size):
             labeled_image[x, y] = 1 # label as peak
