@@ -2,6 +2,7 @@ import os
 import glob
 import h5py as h5
 import numpy as np
+from collections import Counter
 from label_finder import(
     PeakThresholdProcessor,
     ArrayRegion, 
@@ -19,6 +20,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from imblearn.over_sampling import SMOTE
+from sklearn.metrics import confusion_matrix
 
 def data_preparation(image_data, labeled_image, coordinates, patch_size):
     def split_into_patches(image_data, patch_size):
@@ -92,10 +95,16 @@ def data_preparation(image_data, labeled_image, coordinates, patch_size):
     
     return X, y
 
-def train(X_train, y_train):
-    model = RandomForestClassifier()
-    model.fit(X_train, y_train)
-    return model
+def resample_data(X_train, y_train):
+    print("Label distribution before resampling:", Counter(y_train))
+    if len(np.unique(y_train)) < 2:
+        print("Not enough classes to resample. Check label generation.")
+        return X_train, y_train  # Return original data without resampling
+
+    smote = SMOTE()
+    X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+    print("Label distribution after resampling:", Counter(y_train_resampled))
+    return X_train_resampled, y_train_resampled
 
 def evaluate_model(model, X_test, y_test, y_pred):
     """Evaluates the trained model using various metrics."""
@@ -108,9 +117,10 @@ def evaluate_model(model, X_test, y_test, y_pred):
     print(f"Model Precision: {precision}")
     print(f"Model Recall: {recall}")
     print(f"Model F1 Score: {f1}")
+    print(confusion_matrix(y_test, y_pred)) 
 
 
-def main():
+def test_main():
     work = False
     threshold = 1000
     image_data, file_path = load_data(work)
@@ -125,12 +135,14 @@ def main():
        
     X, y = data_preparation(image_data, labeled_image, coordinates, patch_size=50)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+    X_train_resampled, y_train_resampled = resample_data(X_train, y_train)
     
-    model = train(X_train, y_train)    
+    model = RandomForestClassifier(class_weight='balanced')
+    model.fit(X_train_resampled, y_train_resampled)
     
     y_pred = model.predict(X_test)
     
     evaluate_model(model, X_test, y_test, y_pred)
-
-if __name__ == '__main__'
-    main()
+    
+if __name__ == '__main__':
+    test_main()
