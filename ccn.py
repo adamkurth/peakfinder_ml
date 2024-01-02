@@ -6,12 +6,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from collections import Counter
 from label_finder import(
-    PeakThresholdProcessor,
-    ArrayRegion, 
     load_data, 
     load_file_h5,
     display_peak_regions, 
@@ -22,6 +21,58 @@ from label_finder import(
     main,
     )                     
 
+class PeakThresholdProcessor:
+    def __init__(self, image_tensor, threshold_value=0):
+        self.image_tensor = image_tensor
+        self.threshold_value = threshold_value
+
+    def set_threshold_value(self, new_threshold_value):
+        self.threshold_value = new_threshold_value
+
+    def get_coordinates_above_threshold(self):
+        # convert to boolean mask
+        mask = self.image_tensor > self.threshold_value
+        # indices of True values in the mask
+        coordinates = torch.nonzero(mask).cpu().numpy()
+        return coordinates
+
+    def get_local_maxima(self):
+        # relies on 'find_peaks' which works on 1D arrays.
+        image_1d = self.image_tensor.flatten().cpu().numpy()  # to numpy for compatibility with 'find_peaks'
+        peaks, _ = find_peaks(image_1d, height=self.threshold_value)
+        coordinates = [self.flat_to_2d(idx) for idx in peaks]
+        return coordinates
+
+    def flat_to_2d(self, index):
+        rows, cols = self.image_tensor.shape
+        return (index // cols, index % cols)
+
+class ArrayRegion:
+    def __init__(self, tensor):
+        self.tensor = tensor
+        self.x_center = 0
+        self.y_center = 0
+        self.region_size = 0
+
+    def set_peak_coordinate(self, x, y):
+        self.x_center = x
+        self.y_center = y
+
+    def set_region_size(self, size):
+        max_printable_region = min(self.tensor.shape[0], self.tensor.shape[1]) // 2
+        self.region_size = min(size, max_printable_region)
+
+    def get_region(self):
+        x_range = slice(self.x_center - self.region_size, self.x_center + self.region_size + 1)
+        y_range = slice(self.y_center - self.region_size, self.y_center + self.region_size + 1)
+        region = self.tensor[x_range, y_range] # tensor slicing
+        return region
+
+    def extract_region(self, x_center, y_center, region_size):
+        self.set_peak_coordinate(x_center, y_center)
+        self.set_region_size(region_size)
+        return self.get_region()
+    
 class CCN(nn.Module):
     # CNN using pytorch
     def __init__(self, num_channels, img_height, img_width):
@@ -44,31 +95,70 @@ class CCN(nn.Module):
         x = self.fc2(x) # 2 for binary classification
         return x
     
-def preprocess(image_data):
-    if len(image_data.shape) == 2:  # If grayscale and 2D
-        image_data = image_data.reshape(1, 1, image_data.shape[0], image_data.shape[1])
-    elif len(image_data.shape) == 3:  # If 3D but no channel dimension
-        image_data = image_data.reshape(1, image_data.shape[0], image_data.shape[1], image_data.shape[2])
-    # Move channel to the second dimension for PyTorch
-    image_data = np.moveaxis(image_data, -1, 1)
-    return image_data
+def is_peak(image_data, coordinate, neighborhood_size=3):
+    x, y = coordinate
+    region = ArrayRegion(image_data)
+    
+    neighborhood = region.extract_region(x, y, neighborhood_size)
+    if torch.numel(neighborhood) == 0:  # neighborhood is empty
+        return False
+    
+    center = neighborhood_size, neighborhood_size
+    is_peak = neighborhood[center] == torch.max(neighborhood)
+    return is_peak
 
-def data_preparation(image_data, labeled_image):
-    labeled_image = labeled_image.reshape(-1).astype(np.int64)
-    X_train, X_test, y_train, y_test = train_test_split(image_data, labeled_image, test_size=0.2)
-    X_train_tensor = torch.Tensor(X_train)
-    X_test_tensor = torch.Tensor(X_test)
-    y_train_tensor = torch.Tensor(y_train)
-    y_test_tensor = torch.Tensor(y_test)
+def generate_labeled_image(image_data, peak_coordinates, neighborhood_size):
+    labeled_image = torch.zeros_like(image_data)
+    for (x, y) in peak_coordinates:
+        if is_peak(image_data, (x, y), neighborhood_size):
+            labeled_image[x, y] = 1  # label as peak
+    print('Generated labeled image.')
+    return labeled_image
+
+def preprocess(image_data, labeled_image):
+    # Convert numpy arrays to PyTorch tensors if needed
+    if isinstance(image_data, np.ndarray):
+        image_data = torch.from_numpy(image_data).float()
+    if isinstance(labeled_image, np.ndarray):
+        labeled_image = torch.from_numpy(labeled_image).float()
+
+    # Add channel and batch dimensions if they're missing
+    if len(image_data.shape) == 2:
+        image_data = image_data.unsqueeze(0).unsqueeze(0)  # shape: [1, 1, H, W]
+
+    # Move channel to the second dimension if it's in the last
+    if len(image_data.shape) == 3:
+        image_data = image_data.permute(2, 0, 1).unsqueeze(0)  # shape: [1, C, H, W]
+
+    # If the data is already 4D but in the wrong order, fix it
+    if len(image_data.shape) == 4 and image_data.shape[1] > image_data.shape[3]:
+        image_data = image_data.permute(0, 3, 1, 2)  # shape: [B, C, H, W]
+
+    return image_data, labeled_image
+
+
+def data_preparation(image_data, labeled_data):
+    # Preprocess the data to ensure it's in the right format
+    image_tensor, labeled_tensor = preprocess(image_data, labeled_data)
     
-    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-    test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+    # Ensure the labeled_tensor is a 1D tensor of long type labels
+    labeled_tensor = labeled_tensor.view(-1).long()
+
+    # Flatten the spatial dimensions of the image_tensor
+    num_samples = image_tensor.shape[0]
+    flattened_image_tensor = image_tensor.view(num_samples, -1)
+
+    # Split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(flattened_image_tensor, labeled_tensor, test_size=0.2)
     
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    # Create DataLoader objects
+    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
+    test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=32, shuffle=False)
     
-    return X_train, X_test, y_train, y_test, train_loader, test_loader, labeled_image
-    
+    print("Flattened image tensor shape:", flattened_image_tensor.shape)
+    print("Labeled tensor shape:", labeled_tensor.shape)
+    return train_loader, test_loader
+
 def train(train_loader, num_channels, img_height, img_width):
     model = CCN(num_channels, img_height, img_width)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,29 +202,29 @@ def evaluate_model(model, test_loader):
 
 def test_main():
     threshold = 1000
-    image_data, file_path = load_data(work=False)
-    coordinates = main(file_path, threshold, display=False)
-    coordinates = [tuple(coord) for coord in coordinates]
-    
-    labeled_image = generate_labeled_image(image_data, coordinates, neighborhood_size=5)
+    work = False
 
-    # preprocessing
-    image_data = preprocess(image_data)
-    image_data = preprocess(image_data)
-    print("Preprocessed image data shape:", image_data.shape)
-    labeled_image = generate_labeled_image(image_data, coordinates)
+    # Load image data and convert it to a PyTorch tensor
+    image_data, file_path = load_data(work)
+    image_tensor = torch.tensor(image_data, dtype=torch.float32)
+
+    # Generate coordinates and labeled image
+    coordinates = main(file_path, threshold, display=False)
+    labeled_tensor = generate_labeled_image(image_tensor, coordinates, neighborhood_size=5)
+
+    # Preprocess and prepare data
+    # image_tensor, labeled_tensor = preprocess(image_tensor, labeled_tensor)
+    X_train, X_test, y_train, y_test, train_loader, test_loader = data_preparation(image_tensor, labeled_tensor)
     
+    print("Image tensor shape:", image_tensor.shape)
+    print("Labeled tensor shape:", labeled_tensor.shape)
     
-    # data prep
-    X_train, X_test, y_train, y_test, train_loader, test_loader, labeled_image = data_preparation(image_data, labeled_image)
+    # Determine dimensions
+    img_height, img_width = image_tensor.shape[1:3]
+    num_channels = image_tensor.shape[0]
     
-    img_height, img_width = image_data.shape[1:3]
-    img_height = image_data.shape[0]
-    img_width = image_data.shape[1]
-    num_channels = image_data.shape[2]
-    
+    # Train and evaluate model
     model = train(train_loader, num_channels, img_height, img_width)
-    
     evaluate_model(model, test_loader)
     
 if __name__ == '__main__':
