@@ -128,8 +128,7 @@ def is_peak(image_data, coordinate, neighborhood_size=3):
     neighborhood = region.extract_region(x, y, neighborhood_size)    
     center = neighborhood_size, neighborhood_size
     is_peak = neighborhood[center] == np.max(neighborhood)
-    if is_peak:
-        print(f'Peak found at {coordinate}')
+    # print(f'Peak found at {coordinate}' if is_peak else f'No peak found at {coordinate}')
     return is_peak
 
 def view_neighborhood(coordinates, image_data):
