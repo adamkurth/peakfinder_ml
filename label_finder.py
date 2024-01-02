@@ -3,9 +3,8 @@ import numpy as np
 import h5py as h5
 import matplotlib.pyplot as plt
 import ast # for string to list conversion
-
+import glob
 from scipy.signal import find_peaks
-from test import load_data
 
 class PeakThresholdProcessor: 
     def __init__(self, image_array, threshold_value=0):
@@ -60,13 +59,30 @@ class ArrayRegion:
             # Set print options for better readability
             np.set_printoptions(precision=8, suppress=True, linewidth=120, edgeitems=7)
             return region
-
-
+    
+def load_data(work):
+    if work: # whether at work or not
+        file_path = 'images/DATASET1-1.h5'
+    else:
+        water_background_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
+        file_path = os.path.join(water_background_dir,'9_18_23_high_intensity_3e8keV-2.h5')
+        
+    matching_files = glob.glob(file_path)
+    if not matching_files:
+        raise FileNotFoundError(f"No files found matching pattern: \n{file_path}")
+        
+    try:
+        with h5.File(file_path, 'r') as f:
+            data = f['entry/data/data'][:]
+        return data, file_path
+    except Exception as e:
+        raise OSError(f"Failed to read {file_path}: {e}")
+    
 def load_file_h5(file_path):
     try:
         with h5.File(file_path, "r") as f:
             data = np.array(f["entry/data/data"][()])
-            print("File loaded successfully.")
+            print(f"File loaded successfully: \n {file_path}")
             return data
     except FileNotFoundError:
         print(f"File not found: {file_path}")
@@ -119,7 +135,7 @@ def is_peak(image_data, coordinate, neighborhood_size=3):
 def view_neighborhood(coordinates, image_data):
     coordinates = list(coordinates)
     
-    print("List of coordinates:")
+    print('\n', "List of coordinates:")
     for i, (x, y) in enumerate(coordinates, 1):
         print(f'{i}. ({x}, {y})')
 
@@ -168,28 +184,46 @@ def view_neighborhood(coordinates, image_data):
         except Exception as e:
             print(f"An error occurred: {str(e)}")
             
-def main(file_path, threshold_value):
+def generate_labeled_image(image_data, peak_coordinates, neighborhood_size=5):
+    labeled_image = np.zeros_like(image_data)
+
+    for (x, y) in peak_coordinates:
+        if is_peak(image_data, (x, y), neighborhood_size):
+            labeled_image[x, y] = 1 # label as peak
+    print('Generated labeled image.')
+    return labeled_image
+
+def main(file_path, threshold_value, display=True):
     image_array = load_file_h5(file_path) # load_file_h5
     threshold_processor = PeakThresholdProcessor(image_array, threshold_value)
     coordinates = threshold_processor.get_coordinates_above_threshold()
     # display    
     print(f'Found {len(coordinates)} peaks above threshold {threshold_value}')
-    # display_peak_regions(image_array, coordinates)
+    if display:
+            display_peak_regions(image_array, coordinates)
+            
     return coordinates
 
 if __name__ == "__main__":
     work = False
     image_data, file_path = load_data(work) # from test.py in peakfinder_ml
     threshold = 1000
-    coordinates_array = main(file_path, threshold)
-    coordinates = [tuple(coord) for coord in coordinates_array]
-    print(f'manually found coordinates {coordinates}\n')
+    coordinates = main(file_path, threshold, display=True)
+
+    # converts to list
+    coordinates = [tuple(coord) for coord in coordinates]
     
+    print('\n', f'manually found coordinates {coordinates}\n')
+
     threshold_processor = PeakThresholdProcessor(image_data, threshold)
     peaks = threshold_processor.get_local_maxima()
     
+    # validates that peaks in script are the same as manually found peaks
     confirmed_common_peaks, _, _ = validate(coordinates, peaks, image_data) # manually found and script found
     confirmed_common_peaks = list(confirmed_common_peaks)
-    print(confirmed_common_peaks)
+    
+    # prints menu to view neighborhood
     view_neighborhood(confirmed_common_peaks, image_data)
     
+    # return labeled array for training
+    labeled_array = generate_labeled_image(image_data, confirmed_common_peaks)
