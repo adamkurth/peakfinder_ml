@@ -215,7 +215,6 @@ def preprocess():
     print(label_tensor)
     return combined_tensor, label_tensor, confirmed_common_list
 
-
 def data_preparation(image_tensor, labeled_tensor):
     """Split the data into training and testing sets and create DataLoader objects."""
     num_images = image_tensor.shape[0]
@@ -255,7 +254,7 @@ def train(train_loader, img_height, img_width):
     optimizer = optim.Adam(model.parameters(), lr=0.001) # lr: learning rate
     
     # Train the model
-    num_epochs = 10
+    num_epochs = 2
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -271,11 +270,31 @@ def train(train_loader, img_height, img_width):
         print(f'Epoch: {epoch+1}, Loss: {running_loss/len(train_loader)}')
     return model
 
-
-
+def evaluate_model(model, test_loader):
+    """Evaluate the model and return the accuracy."""
+    model.eval() 
+    correct = 0
+    total = 0
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'Using device: {device}')
+    model.to(device)
+    
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0) # total number of labels
+            correct += (predicted == labels).sum().item()
+            
+    accuracy = 100 * correct / total
+    print(f'Accuracy of the network on the {total} test images: {accuracy} %')
+    return accuracy
 
 if __name__ == '__main__':
     combined_tensor, label_tensor, confirmed_common_list = preprocess()
     train_loader, test_loader = data_preparation(combined_tensor, label_tensor)
     img_height, img_width = combined_tensor.shape[1], combined_tensor.shape[2]
     model = train(train_loader, img_height, img_width)
+    accuracy = evaluate_model(model, test_loader)
