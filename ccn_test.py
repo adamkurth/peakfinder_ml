@@ -72,7 +72,28 @@ class ArrayRegion:
         self.set_region_size(region_size)
         return self.get_region()
 
-
+class CCN(nn.Module):
+    # CNN using pytorch
+    def __init__(self, img_height, img_width):
+        super(CCN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1) # 32 neurons single input channel
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1) # 64 neurons
+        self.dropout = nn.Dropout(0.5)
+        self.flattened_size = 64 * (img_height // 4) * (img_width // 4) # 64 neurons
+        self.fc1 = nn.Linear(self.flattened_size, 128) # 128 neurons
+        self.fc2 = nn.Linear(128, 2) # 2 for binary classification
+    
+    def forward(self, x):
+        x = torch.relu(self.conv1(x)) # 32 neurons
+        x = nn.MaxPool2d(2)(x) # 2x2 pooling
+        x = torch.relu(self.conv2(x)) # 64 neurons
+        x = nn.MaxPool2d(2)(x) # 2x2 pooling
+        x = x.view(x.size(0), -1) # flatten
+        x = self.dropout(x) # regularization
+        x = torch.relu(self.fc1(x)) # 128 neurons
+        x = self.fc2(x) # 2 for binary classification
+        return x
+    
 def preprocess():
     def load_tensor(directory_path):
         file_pattern = directory_path + '*.h5'
@@ -174,10 +195,11 @@ def preprocess():
 
         return combined_label_tensor
     
-    home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
-    # work_dir = ''
+    # toggle between work and home
+    # home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
+    work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
     
-    combined_tensor, directory_path = load_tensor(home_dir)
+    combined_tensor, directory_path = load_tensor(work_dir)
     print(f'Type of combined_label_tensor: {type(combined_tensor)}')
     print(f'Shape of combined_label_tensor: {combined_tensor.shape}')
     confirmed_common_list = find_coordinates(combined_tensor)
@@ -185,5 +207,72 @@ def preprocess():
     print(label_tensor)
     return combined_tensor, label_tensor, confirmed_common_list
 
+
+
+
+def data_preparation(image_tensor, labeled_tensor):
+    """Split the data into training and testing sets and create DataLoader objects."""
+    num_images = image_tensor.shape[0]
+    
+    # Ensure the labeled_tensor is a 1D tensor of long type labels
+    labeled_tensor = labeled_tensor.view(-1)[:num_images].long()
+
+    # flatten the spatial dimensions of the image_tensor
+    flattened_image_tensor = image_tensor.view(num_images, -1)
+    
+    print(f'Flattened image tensor shape: {flattened_image_tensor.shape}')
+    print(f'Reshaped labeled tensor shape: {labeled_tensor.shape}')
+
+    if flattened_image_tensor.shape[0] != labeled_tensor.shape[0]:
+        raise ValueError(f"Number of samples in the image tensor and labeled tensor must match.\n {flattened_image_tensor.shape[0]} {labeled_tensor.shape[0]}")
+    
+    # split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(flattened_image_tensor, labeled_tensor, test_size=0.2)
+
+    # create DataLoader objects
+    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
+    test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=32, shuffle=False)
+    
+    print(f'Image tensor shape: {image_tensor.shape}')
+    print(f'Labeled tensor shape: {labeled_tensor.shape}')
+
+    return train_loader, test_loader
+
+def train(train_loader, img_height, img_width):
+    """Train the model and return the trained model."""
+    # Create the model
+    model = CCN(img_height, img_width)
+    print(model)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'Using device: {device}')
+    model.to(device)
+    
+    criterion = nn.CrossEntropyLoss() # loss function
+    optimizer = optim.Adam(model.parameters(), lr=0.001) # lr: learning rate
+    
+    # Train the model
+    num_epochs = 10
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        for images, labels in train_loader:
+            images = images.unsqueeze(1).to(device) # add channel dimension
+            labels = labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        print(f'Epoch: {epoch+1}, Loss: {running_loss/len(train_loader)}')
+    return model
+
+
+
+
 if __name__ == '__main__':
-    preprocess()
+    combined_tensor, label_tensor, confirmed_common_list = preprocess()
+    
+    train_loader, test_loader = data_preparation(combined_tensor, label_tensor)
+    img_height, img_width = combined_tensor.shape[1], combined_tensor.shape[2]
+    model = train(train_loader, img_height, img_width)
