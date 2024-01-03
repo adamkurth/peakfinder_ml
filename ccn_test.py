@@ -90,6 +90,8 @@ class CCN(nn.Module):
         self.fc2 = nn.Linear(128, 2) # 2 for binary classification
     
     def forward(self, x):
+        print("Shape at the start of forward method:", x.shape)  # Debugging line
+        
         x = torch.relu(self.conv1(x))
         x = self.pool(x)
         x = torch.relu(self.conv2(x))
@@ -216,16 +218,16 @@ def preprocess():
 
 def data_preparation(image_tensor, labeled_tensor):
     """Split the data into training and testing sets and create DataLoader objects."""
-    image_tensor = image_tensor.unsqueeze(1) # Reshape from [N, H, W] to [N, 1, H, W]
-
-    # Apply any additional preprocessing like the patch method
-    image_tensor = PeakThresholdProcessor(image_tensor).patch_method(image_tensor)
+    num_images = image_tensor.shape[0]
+    print(f'Number of images: {num_images}')
     
+    image_tensor = image_tensor.unsqueeze(1) # Reshape from [N, H, W] to [N, 1, H, W]
+    image_tensor = PeakThresholdProcessor(image_tensor).patch_method(image_tensor)
     print(f'Image tensor shape: {image_tensor.shape}') # [N, 1, H, W]
     
     # ensure labeled_tensor is a 1d tensor of long type
-    label_tensor = labeled_tensor.view(-1).long()
-    print(f'Label tensor shape: {label_tensor.shape}') # [N, 1]
+    labeled_tensor = labeled_tensor.view(-1)[:num_images].long()
+    print(f'Corrected labeled tensor shape: {labeled_tensor.shape}')    
     
     # Split the data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(image_tensor, labeled_tensor, test_size=0.2)
@@ -236,7 +238,7 @@ def data_preparation(image_tensor, labeled_tensor):
     
     print(f'Image tensor shape: {image_tensor.shape}')
     print(f'Labeled tensor shape: {labeled_tensor.shape}')
-
+    print(f'Shape before entering the model: {image_tensor.shape}')
     return train_loader, test_loader
 
 def train(train_loader, img_height, img_width):
@@ -258,9 +260,9 @@ def train(train_loader, img_height, img_width):
         model.train()
         running_loss = 0.0
         for images, labels in train_loader:
-            images = images.unsqueeze(1) # reshape from [N, H, W] to [N, 1, W, H]
-            labels = labels.to(device)
-            optimizer.zero_grad()
+            print(f'Images shape: {images.shape}')  # Should be [N, 1, H, W]
+            print(f'Labels shape: {labels.shape}')  # Should be [N] or [N, 1]
+            
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
