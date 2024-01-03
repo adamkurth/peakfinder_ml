@@ -1,3 +1,4 @@
 *.h5
 images/*.h5
 __pycache__/
+peakonly/
