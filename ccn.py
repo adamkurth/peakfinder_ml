@@ -142,11 +142,14 @@ def data_preparation(image_data, labeled_data):
     image_tensor, labeled_tensor = preprocess(image_data, labeled_data)
     
     # Ensure the labeled_tensor is a 1D tensor of long type labels
-    labeled_tensor = labeled_tensor.view(-1).long()
-
+    labeled_tensor = labeled_tensor.view(-1)[:image_tensor.shape[0]].long()
+    
     # Flatten the spatial dimensions of the image_tensor
     num_samples = image_tensor.shape[0]
-    flattened_image_tensor = image_tensor.view(num_samples, -1)
+    flattened_image_tensor = image_tensor.view(image_tensor.shape[0], -1)
+
+    print("Flattened image tensor shape:", flattened_image_tensor.shape)
+    print("Reshaped labeled tensor shape:", labeled_tensor.shape)
 
     # Split the data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(flattened_image_tensor, labeled_tensor, test_size=0.2)
@@ -155,8 +158,9 @@ def data_preparation(image_data, labeled_data):
     train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
     test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=32, shuffle=False)
     
-    print("Flattened image tensor shape:", flattened_image_tensor.shape)
+    print("Image tensor shape:", image_tensor.shape)
     print("Labeled tensor shape:", labeled_tensor.shape)
+
     return train_loader, test_loader
 
 def train(train_loader, num_channels, img_height, img_width):
@@ -199,33 +203,54 @@ def evaluate_model(model, test_loader):
 
     print(f'Accuracy of the model on test images: {100 * correct / total}%')
 
+def load_tensor():
+    directory_path = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
+    file_pattern = directory_path + '*.h5'
+        
+    tensor_list = []
+
+    for file_path in glob.glob(file_pattern):
+        with h5.File(file_path, 'r') as file:
+            # Extract the dataset from the .h5 file
+            data = file['data/data/entry'][:]
+            tensor = torch.from_numpy(data)
+            print(f'Loaded tensor from {file_path} with shape: {tensor.shape}')
+            tensor_list.append(tensor)
+
+    # If there are multiple tensors, stack them into a single tensor
+    if tensor_list:
+        tensor = torch.stack(tensor_list)
+    else:
+        raise ValueError("No .h5 files found or empty dataset in files.")
+
+    return tensor, directory_path
 
 def test_main():
     threshold = 1000
-    work = False
+    
+    tensor, file_path = load_tensor()
+    
+    # If image_data is a single image, unsqueeze to add a batch dimension
+    if len(image_data.shape) == 3:
+        image_data = image_data.unsqueeze(0)  # Add batch dimension if missing
 
-    # Load image data and convert it to a PyTorch tensor
-    image_data, file_path = load_data(work)
-    image_tensor = torch.tensor(image_data, dtype=torch.float32)
-
-    # Generate coordinates and labeled image
     coordinates = main(file_path, threshold, display=False)
-    labeled_tensor = generate_labeled_image(image_tensor, coordinates, neighborhood_size=5)
+    coordinates = [tuple(coord) for coord in coordinates]
+    
+    labeled_image = generate_labeled_image(image_data, coordinates, neighborhood_size=5)
 
-    # Preprocess and prepare data
-    # image_tensor, labeled_tensor = preprocess(image_tensor, labeled_tensor)
+    # preprocessing
+    image_tensor, labeled_tensor = preprocess(image_data, labeled_image)
+    print("Preprocessed image tensor shape:", image_tensor.shape)
+    print("Labeled tensor shape:", labeled_tensor.shape)
+
+    # data prep
     X_train, X_test, y_train, y_test, train_loader, test_loader = data_preparation(image_tensor, labeled_tensor)
     
-    print("Image tensor shape:", image_tensor.shape)
-    print("Labeled tensor shape:", labeled_tensor.shape)
+    num_channels = image_tensor.shape[1]
+    img_height, img_width = image_tensor.shape[2:4]
     
-    # Determine dimensions
-    img_height, img_width = image_tensor.shape[1:3]
-    num_channels = image_tensor.shape[0]
-    
-    # Train and evaluate model
     model = train(train_loader, num_channels, img_height, img_width)
-    evaluate_model(model, test_loader)
     
 if __name__ == '__main__':
     test_main()
