@@ -82,10 +82,13 @@ def load_tensor(directory_path):
         with h5.File(file_path, 'r') as file:
             # Assuming 'entry/data/data' is the correct path within your .h5 files
             data = np.array(file['entry/data/data'][:])
-            # Check if the data is already 3D (H, W, C), and if not, add a channel dimension
-            if len(data.shape) == 2:
-                data = data[np.newaxis, :, :]  # Add a channel dimension (C, H, W)
-            tensor = torch.from_numpy(data).float()
+            # Ensure data is 2D (H, W), if not, you might need to adjust or provide additional context
+            if len(data.shape) == 3 and data.shape[2] == 1:
+                data = data[:, :, 0]  # If it's (H, W, 1), convert to (H, W)
+            elif len(data.shape) != 2:
+                raise ValueError(f"Data in {file_path} has an unexpected shape: {data.shape}")
+
+            tensor = torch.from_numpy(data).unsqueeze(0).float()  # Add a batch dimension (1, H, W)
             print(f'Loaded data from {file_path} with shape: {tensor.shape}')
             tensor_list.append(tensor)
 
@@ -93,42 +96,53 @@ def load_tensor(directory_path):
         raise ValueError("No .h5 files found or empty dataset in files.")
 
     # Stack all tensors along the first dimension to create a single tensor
-    combined_tensor = torch.stack(tensor_list)
+    combined_tensor = torch.cat(tensor_list, dim=0)  # (N, H, W)
 
-    # Check if the combined tensor has 4 dimensions (N, H, W, C), and if so, permute to (N, C, H, W)
-    if combined_tensor.dim() == 4:
-        combined_tensor = combined_tensor.permute(0, 3, 1, 2)
-
+    print(f"Combined tensor shape: {combined_tensor.shape}")
     return combined_tensor, directory_path
 
 def is_local_max(image, x, y, neighborhood_size):
     """Check if the pixel at (x, y) is a local maximum within the specified neighborhood."""
     half_size = neighborhood_size // 2
-    neighborhood = image[max(0, x - half_size):x + half_size + 1, 
-                         max(0, y - half_size):y + half_size + 1]
-
-    return image[x, y] == torch.max(neighborhood)
+    start_x = max(0, x - half_size)
+    end_x = min(image.shape[0], x + half_size + 1)
+    start_y = max(0, y - half_size)
+    end_y = min(image.shape[1], y + half_size + 1)
+    
+    neighborhood = image[start_x:end_x, start_y:end_y]
+    
+    # check if the current pixel is equal to max of its neighborhood
+    return image[x, y] == torch.max(neighborhood) and torch.sum(neighborhood == image[x, y]) == 1
 
 def generate_label_tensor(image_tensor, neighborhood_size=3):
     """Generate a tensor of the same shape as image_tensor, marking 1 at peaks and 0 elsewhere."""
-    if not isinstance(image_tensor, torch.Tensor):
-        raise TypeError("image_tensor should be a PyTorch tensor")
+    #N: number of images, 
+    # C: number of channels, 
+    # H: height,
+    # W: width
     
+    if not isinstance(image_tensor, torch.Tensor):
+        raise TypeError("image_tensor should be a PyTorch tensor with shape (N, H, W)")
+
+    if len(image_tensor.shape) == 4 and image_tensor.shape[1] == 1:  # If it's (N, C, H, W) with C=1
+        image_tensor = image_tensor.squeeze(1)  # Remove the channel dimension
+
+    elif len(image_tensor.shape) != 3:  # Ensure it's (N, H, W)
+        raise ValueError("Unsupported tensor shape. Expected (N, H, W)")
+
     label_tensor_list = []
-    for img_idx in range(image_tensor.shape[0]):
-        label_tensor = torch.zeros_like(image_tensor[img_idx, :, :])
-        # loop over every pixel in image
-        for x in range(image_tensor.shape[1]):
-            for y in range(image_tensor.shape[2]):
+    for img_idx in range(image_tensor.shape[0]):  # Loop over images in tensor
+        label_tensor = torch.zeros_like(image_tensor[img_idx, :, :])  # (H, W)
+
+        for x in range(image_tensor.shape[1]):  # height
+            for y in range(image_tensor.shape[2]):  # width
                 if is_local_max(image_tensor[img_idx, :, :], x, y, neighborhood_size):
-                    label_tensor[x, y] = 1  # Mark as peak
-                    print(f'Peak found in image {img_idx} at ({x}, {y})')
-                    
-        label_tensor_list.append(label_tensor) 
+                    label_tensor[x, y] = 1  # peak
+
+        label_tensor_list.append(label_tensor)
+
     combined_label_tensor = torch.stack(label_tensor_list)
     return combined_label_tensor
-
-
 
 if __name__ == '__main__':
     # work_dir = ''
@@ -137,10 +151,7 @@ if __name__ == '__main__':
     print("Type of combined_tensor:", type(combined_tensor))
     print("Shape of combined_tensor:", combined_tensor.shape)
     
-    if isinstance(combined_tensor, torch.Tensor):
-        combined_label_tensor = generate_label_tensor(combined_tensor)
-    else:
-        print("combined_tensor is not a PyTorch tensor.")
+    combined_label_tensor = generate_label_tensor(combined_tensor)
     
     # combined_label_tensor = generate_label_tensor(combined_tensor)
     # print(combined_tensor, combined_label_tensor)
