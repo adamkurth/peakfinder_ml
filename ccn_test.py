@@ -81,22 +81,23 @@ class CCN(nn.Module):
     # CNN using pytorch
     def __init__(self, img_height, img_width):
         super(CCN, self).__init__()
-        self.conv1 = nn.Conv2d(2, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)) # 32 neurons 2 input channels
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1) # 64 neurons
-        self.dropout = nn.Dropout(0.5)
-        self.flattened_size = 64 * (img_height // 4) * (img_width // 4) # 64 neurons
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)) # 32 neurons
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)) # 64 neurons
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)  # 2x2 pooling
+        self.dropout = nn.Dropout(0.5)  # Dropout layer with 50% probability
+        self.flattened_size = 64 * (img_height // 4) * (img_width // 4) # 4x4 pooling
         self.fc1 = nn.Linear(self.flattened_size, 128) # 128 neurons
         self.fc2 = nn.Linear(128, 2) # 2 for binary classification
     
     def forward(self, x):
-        x = torch.relu(self.conv1(x)) # 32 neurons
-        x = nn.MaxPool2d(2)(x) # 2x2 pooling
-        x = torch.relu(self.conv2(x)) # 64 neurons
-        x = nn.MaxPool2d(2)(x) # 2x2 pooling
-        x = x.view(x.size(0), -1) # flatten
-        x = self.dropout(x) # regularization
-        x = torch.relu(self.fc1(x)) # 128 neurons
-        x = self.fc2(x) # 2 for binary classification
+        x = torch.relu(self.conv1(x))
+        x = self.pool(x)
+        x = torch.relu(self.conv2(x))
+        x = self.pool(x) 
+        x = x.view(x.size(0), -1)
+        x = self.dropout(x)
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
         return x
     
 def preprocess():
@@ -215,28 +216,19 @@ def preprocess():
 
 def data_preparation(image_tensor, labeled_tensor):
     """Split the data into training and testing sets and create DataLoader objects."""
-    # Reshape from [N, H, W] to [N, 1, H, W]
-    image_tensor = image_tensor.unsqueeze(1)  
+    image_tensor = image_tensor.unsqueeze(1) # Reshape from [N, H, W] to [N, 1, H, W]
 
     # Apply any additional preprocessing like the patch method
     image_tensor = PeakThresholdProcessor(image_tensor).patch_method(image_tensor)
     
-    num_images = image_tensor.shape[0]
+    print(f'Image tensor shape: {image_tensor.shape}') # [N, 1, H, W]
     
-    # Ensure the labeled_tensor is a 1D tensor of long type labels
-    labeled_tensor = labeled_tensor.view(-1)[:num_images].long()
-    
-    # Flatten the spatial dimensions of the image_tensor
-    flattened_image_tensor = image_tensor.view(num_images, -1)
-        
-    print(f'Flattened image tensor shape: {flattened_image_tensor.shape}')
-    print(f'Reshaped labeled tensor shape: {labeled_tensor.shape}')
-
-    if flattened_image_tensor.shape[0] != labeled_tensor.shape[0]:
-        raise ValueError(f"Number of samples in the image tensor and labeled tensor must match.\n {flattened_image_tensor.shape[0]} {labeled_tensor.shape[0]}")
+    # ensure labeled_tensor is a 1d tensor of long type
+    label_tensor = labeled_tensor.view(-1).long()
+    print(f'Label tensor shape: {label_tensor.shape}') # [N, 1]
     
     # Split the data into training and testing sets
-    X_train, X_test, y_train, y_test = train_test_split(flattened_image_tensor, labeled_tensor, test_size=0.2)
+    X_train, X_test, y_train, y_test = train_test_split(image_tensor, labeled_tensor, test_size=0.2)
     
     # Create DataLoader objects
     train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
