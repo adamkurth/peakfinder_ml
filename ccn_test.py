@@ -46,6 +46,11 @@ class PeakThresholdProcessor:
     def flat_to_2d(self, index, width):
         return (index // width, index % width)
     
+    def patch_method(self, image_tensor):
+        # scale image_tensor to [0,1]
+        normalized_tensor = (image_tensor - image_tensor.min()) / (image_tensor.max() - image_tensor.min())
+        return normalized_tensor
+    
 class ArrayRegion:
     def __init__(self, tensor):
         self.tensor = tensor
@@ -76,7 +81,7 @@ class CCN(nn.Module):
     # CNN using pytorch
     def __init__(self, img_height, img_width):
         super(CCN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1) # 32 neurons single input channel
+        self.conv1 = nn.Conv2d(2, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)) # 32 neurons 2 input channels
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1) # 64 neurons
         self.dropout = nn.Dropout(0.5)
         self.flattened_size = 64 * (img_height // 4) * (img_width // 4) # 64 neurons
@@ -196,10 +201,10 @@ def preprocess():
         return combined_label_tensor
     
     # toggle between work and home
-    # home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
-    work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
+    home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
+    # work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
     
-    combined_tensor, directory_path = load_tensor(work_dir)
+    combined_tensor, directory_path = load_tensor(home_dir)
     print(f'Type of combined_label_tensor: {type(combined_tensor)}')
     print(f'Shape of combined_label_tensor: {combined_tensor.shape}')
     confirmed_common_list = find_coordinates(combined_tensor)
@@ -208,28 +213,32 @@ def preprocess():
     return combined_tensor, label_tensor, confirmed_common_list
 
 
-
-
 def data_preparation(image_tensor, labeled_tensor):
     """Split the data into training and testing sets and create DataLoader objects."""
+    # Reshape from [N, H, W] to [N, 1, H, W]
+    image_tensor = image_tensor.unsqueeze(1)  
+
+    # Apply any additional preprocessing like the patch method
+    image_tensor = PeakThresholdProcessor(image_tensor).patch_method(image_tensor)
+    
     num_images = image_tensor.shape[0]
     
     # Ensure the labeled_tensor is a 1D tensor of long type labels
     labeled_tensor = labeled_tensor.view(-1)[:num_images].long()
-
-    # flatten the spatial dimensions of the image_tensor
-    flattened_image_tensor = image_tensor.view(num_images, -1)
     
+    # Flatten the spatial dimensions of the image_tensor
+    flattened_image_tensor = image_tensor.view(num_images, -1)
+        
     print(f'Flattened image tensor shape: {flattened_image_tensor.shape}')
     print(f'Reshaped labeled tensor shape: {labeled_tensor.shape}')
 
     if flattened_image_tensor.shape[0] != labeled_tensor.shape[0]:
         raise ValueError(f"Number of samples in the image tensor and labeled tensor must match.\n {flattened_image_tensor.shape[0]} {labeled_tensor.shape[0]}")
     
-    # split the data into training and testing sets
+    # Split the data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(flattened_image_tensor, labeled_tensor, test_size=0.2)
-
-    # create DataLoader objects
+    
+    # Create DataLoader objects
     train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
     test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=32, shuffle=False)
     
@@ -241,6 +250,7 @@ def data_preparation(image_tensor, labeled_tensor):
 def train(train_loader, img_height, img_width):
     """Train the model and return the trained model."""
     # Create the model
+    print(f'Running training method...\n')
     model = CCN(img_height, img_width)
     print(model)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -256,7 +266,7 @@ def train(train_loader, img_height, img_width):
         model.train()
         running_loss = 0.0
         for images, labels in train_loader:
-            images = images.unsqueeze(1).to(device) # add channel dimension
+            images = images.unsqueeze(1) # reshape from [N, H, W] to [N, 1, W, H]
             labels = labels.to(device)
             optimizer.zero_grad()
             outputs = model(images)
@@ -272,7 +282,6 @@ def train(train_loader, img_height, img_width):
 
 if __name__ == '__main__':
     combined_tensor, label_tensor, confirmed_common_list = preprocess()
-    
     train_loader, test_loader = data_preparation(combined_tensor, label_tensor)
     img_height, img_width = combined_tensor.shape[1], combined_tensor.shape[2]
     model = train(train_loader, img_height, img_width)
