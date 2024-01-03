@@ -14,7 +14,7 @@ from label_finder import(
     load_data, 
     load_file_h5,
     display_peak_regions, 
-    validate,
+    # validate,
     is_peak,
     view_neighborhood, 
     generate_labeled_image, 
@@ -30,24 +30,22 @@ class PeakThresholdProcessor:
     def set_threshold_value(self, new_threshold_value):
         self.threshold_value = new_threshold_value
 
-    def get_coordinates_above_threshold(self):
-        # convert to boolean mask
-        mask = self.image_tensor > self.threshold_value
-        # indices of True values in the mask
+    def get_coordinates_above_threshold(self, image):
+        # convert to boolean mask 'image' is a 2D tensor (H, W)
+        mask = image > self.threshold_value
         coordinates = torch.nonzero(mask).cpu().numpy()
         return coordinates
 
-    def get_local_maxima(self):
-        # relies on 'find_peaks' which works on 1D arrays.
-        image_1d = self.image_tensor.flatten().cpu().numpy()  # to numpy for compatibility with 'find_peaks'
+    def get_local_maxima(self, image):
+        # from 2D image to 1D
+        image_1d = image.flatten().cpu().numpy()
         peaks, _ = find_peaks(image_1d, height=self.threshold_value)
-        coordinates = [self.flat_to_2d(idx) for idx in peaks]
+        coordinates = [self.flat_to_2d(idx, image.shape[1]) for idx in peaks]
         return coordinates
-
-    def flat_to_2d(self, index):
-        rows, cols = self.image_tensor.shape
-        return (index // cols, index % cols)
-
+    
+    def flat_to_2d(self, index, width):
+        return (index // width, index % width)
+    
 class ArrayRegion:
     def __init__(self, tensor):
         self.tensor = tensor
@@ -101,18 +99,17 @@ def load_tensor(directory_path):
     print(f"Combined tensor shape: {combined_tensor.shape}")
     return combined_tensor, directory_path
 
-def is_local_max(image, x, y, neighborhood_size):
-    """Check if the pixel at (x, y) is a local maximum within the specified neighborhood."""
-    half_size = neighborhood_size // 2
-    start_x = max(0, x - half_size)
-    end_x = min(image.shape[0], x + half_size + 1)
-    start_y = max(0, y - half_size)
-    end_y = min(image.shape[1], y + half_size + 1)
+def is_peak(image_tensor, coordinate, neighborhood_size=3):
+    x, y = coordinate
+    region = ArrayRegion(image_tensor)
     
-    neighborhood = image[start_x:end_x, start_y:end_y]
+    neighborhood = region.extract_region(x, y, neighborhood_size)
+    if torch.numel(neighborhood) == 0:  # empty
+        return False
     
-    # check if the current pixel is equal to max of its neighborhood
-    return image[x, y] == torch.max(neighborhood) and torch.sum(neighborhood == image[x, y]) == 1
+    center = neighborhood_size // 2, neighborhood_size // 2
+    is_peak = neighborhood[center] == torch.max(neighborhood)
+    return is_peak
 
 def generate_label_tensor(image_tensor, neighborhood_size=3):
     """Generate a tensor of the same shape as image_tensor, marking 1 at peaks and 0 elsewhere."""
@@ -144,6 +141,48 @@ def generate_label_tensor(image_tensor, neighborhood_size=3):
     combined_label_tensor = torch.stack(label_tensor_list)
     return combined_label_tensor
 
+def find_coordinates(combined_tensor):
+    coord_list_manual = []
+    coord_list_script = []
+    processor = PeakThresholdProcessor(combined_tensor, threshold_value=1000)
+    confirmed_common_list = []
+
+    for img_idx, img in enumerate(combined_tensor):
+        print(f'Processing Image {img_idx}')
+        # manual 
+        coord_manual = processor.get_coordinates_above_threshold(img)
+        coord_list_manual.append(coord_manual)
+        # script
+        coord_script = processor.get_local_maxima(img)
+        coord_list_script.append(coord_script)
+        # validate for img 
+        confirmed_common, _, _ = validate(coord_manual, coord_script, img)
+        confirmed_common_list.append(confirmed_common)
+
+    return confirmed_common_list
+    
+def validate(manual, script, image_array):
+    manual_set = set([tuple(x) for x in manual])
+    script_set = set([tuple(x) for x in script])
+    
+    common = manual_set.intersection(script_set)
+    unique_manual = manual_set.difference(script_set)
+    unique_script = script_set.difference(manual_set)
+    print(f'common: {common}\n')
+    print(f'unique_manual: {unique_manual}\n')
+    print(f'unique_script: {unique_script}\n')
+    
+    confirmed_common = {coord for coord in common if is_peak(image_array, coord)}
+    confirmed_unique_manual = {coord for coord in unique_manual if is_peak(image_array, coord)}
+    confirmed_unique_script = {coord for coord in unique_script if is_peak(image_array, coord)}
+    
+    print(f'confirmed_common: {confirmed_common}\n')
+    print(f'confirmed_unique_manual: {confirmed_unique_manual}\n')
+    print(f'confirmed_unique_script: {confirmed_unique_script}\n')
+
+    return confirmed_common, confirmed_unique_manual, confirmed_unique_script
+### INSERT KNOWN COORDINATES FOR PEAKS IN TENSOR ^^
+
 if __name__ == '__main__':
     # work_dir = ''
     home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
@@ -151,7 +190,8 @@ if __name__ == '__main__':
     print("Type of combined_tensor:", type(combined_tensor))
     print("Shape of combined_tensor:", combined_tensor.shape)
     
-    combined_label_tensor = generate_label_tensor(combined_tensor)
+    coordinates_list = find_coordinates(combined_tensor)
+    # combined_label_tensor = generate_label_tensor(combined_tensor)
     
     # combined_label_tensor = generate_label_tensor(combined_tensor)
     # print(combined_tensor, combined_label_tensor)
