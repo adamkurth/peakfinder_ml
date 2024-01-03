@@ -10,6 +10,7 @@ from scipy.signal import find_peaks
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from collections import Counter
+import sys
 from label_finder import(
     load_data, 
     load_file_h5,
@@ -203,11 +204,23 @@ def preprocess():
 
         return combined_label_tensor
     
-    # toggle between work and home
-    home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
-    # work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
+    # toggle between work, home, or agave directory
+    def choose_path():
+        chosen_path = sys.argv[1]
+        if chosen_path == 'work_dir':
+            work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
+            return work_dir
+        elif chosen_path == 'home_dir':
+            home_dir ='/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
+            return home_dir
+        elif chosen_path == 'agave_dir':
+            agave_dir = '/home/adamkurth/Development/pattern_simulations/sim_3_3e5keV/'
+            return agave_dir
+        else:
+            raise ValueError("Invalid directory path provided: " + chosen_path)
     
-    combined_tensor, directory_path = load_tensor(home_dir)
+    choice = choose_path()
+    combined_tensor, directory_path = load_tensor(choice)
     print(f'Type of combined_label_tensor: {type(combined_tensor)}')
     print(f'Shape of combined_label_tensor: {combined_tensor.shape}')
     confirmed_common_list = find_coordinates(combined_tensor)
