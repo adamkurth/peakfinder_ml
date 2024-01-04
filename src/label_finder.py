@@ -87,7 +87,7 @@ def load_file_h5(file_path):
     except FileNotFoundError:
         print(f"File not found: {file_path}")
     except Exception as e:
-        print(f"An error occurred while loading the file: {str(e)}")
+        pri,nt(f"An error occurred while loading the file: {str(e)}")
                   
 def display_peak_regions(image_array, coordinates):
     plt.figure(figsize=(10, 10))

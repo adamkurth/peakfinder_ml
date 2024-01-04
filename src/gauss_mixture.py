@@ -77,10 +77,13 @@ def guassian_mixture_model(features, random_state=None):
     Returns:
         best_n (int): The optimal number of clusters determined by BIC.
         labels (array): Array of shape (n_samples,) representing the predicted cluster labels for each sample.
+        gmm (GaussianMixture): The trained Gaussian Mixture Model.
     """    
+    
     lowest_bic = np.infty
     best_n = None
     best_labels = None
+    best_gmm = None
 
     for n in range(1, 11):
         gmm = GaussianMixture(n_components=n, covariance_type='full', random_state=random_state)
@@ -90,8 +93,14 @@ def guassian_mixture_model(features, random_state=None):
             lowest_bic = bic
             best_n = n
             best_labels = gmm.predict(features)
+            best_gmm = gmm
 
-    return best_n, best_labels
+    print("Initial BIC:", gmm.bic(features))
+    print("Number of Iterations:", gmm.n_iter_)
+    print("Optimal BIC:", lowest_bic)
+
+    return best_n, best_labels, best_gmm
+
 
 def visualize_clusters(n, labels, features_array, image_array):
     def plot_clusters(n, labels, features_array):
@@ -155,12 +164,11 @@ def visualize_clusters(n, labels, features_array, image_array):
     plot_clusters(n, labels, features_array)
     plot_hist(labels, features_array)
     plotly_clusters(labels, features_array)
-    
+
 if __name__ == '__main__':
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
     features_array = cluster(confirmed_coordinates, image_array)
-    best_n, labels = guassian_mixture_model(features_array)
-    
-    visualize_clusters(best_n, labels, features_array, image_array)
+    best_n, labels, best_gmm = guassian_mixture_model(features_array)
+    # visualize_clusters(best_n, labels, features_array, image_array)
  
