@@ -10,7 +10,8 @@ TASKS=$2
 PARTITION=$3
 QOS=$4
 HOURS=$5
-TAG=$6
+PATH=$6
+TAG=$7
 
 RUN="$RUN$TAG"
 SLURMFILE="$RUN.slurm"
@@ -29,7 +30,7 @@ echo "#SBATCH --error    $RUN.err" >> $SLURMFILE
 echo >> $SLURMFILE
 
 command_line1="module load python/3.7.1"
-command_line2="python ccn_test.py /home/amkurth/Development/pattern_simulations/sim_3_3e5keV/"
+command_line2="python ccn_test.py $PATH"
 echo $command_line1 >> $SLURMFILE
 echo $command_line2 >> $SLURMFILE
 
