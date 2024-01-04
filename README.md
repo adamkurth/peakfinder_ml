@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 ```bash {"id":"01HK8P6S3V98JZJ0QETSV5B8R9"}
 ./run_ccn_SLURM.sh <RUN> <TASKS> <PARTITION> <QOS> <HOURS> <PATH> <TAG>
-
+# example
 ./run_ccn_SLURM.sh test1 8 publicgpu wildfire 4 
 ```
 
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 ```bash {"id":"01HK8P6S45CBZZ0915DE6Y303F"}
 watch -n 2 squeue -j <JOB_ID>
-
+# exmaple
 watch "squeue -u amkurth"
 ```
 
