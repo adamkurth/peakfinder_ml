@@ -60,10 +60,10 @@ class ArrayRegion:
             np.set_printoptions(precision=8, suppress=True, linewidth=120, edgeitems=7)
             return region
     
-def load_data(work):
-    if work: # whether at work or not
+def load_data(choice):
+    if choice: # whether at work or not
         file_path = 'images/DATASET1-1.h5'
-    else:
+    elif choice == False:
         water_background_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
         file_path = os.path.join(water_background_dir,'9_18_23_high_intensity_3e8keV-2.h5')
         
@@ -203,7 +203,34 @@ def generate_labeled_h5(labeled_array):
         print(f"New .h5 image '{file_name}' generated.")
     else:
         print("No new .h5 image generated.")
+      
+def visualize(conf_common, conf_unique_manual, conf_unique_script, image_array):
+    def add_jitter(coordinates, jitter=10): #large jitter for large iamge!
+        return [(x + np.random.uniform(-jitter, jitter), 
+                 y + np.random.uniform(-jitter, jitter)) for x, y in coordinates]
+        
+    common = add_jitter(list(conf_common))
+    manual = add_jitter(list(conf_unique_manual))
+    script = add_jitter(list(conf_unique_script))
+    
+    plt.imshow(image_array, cmap='viridis')
+    
+    if common:
+        common_x, common_y = zip(*common)
+        plt.scatter(common_x, common_y, color='red', s=50, marker='o', alpha=0.7, label='Common Peaks')
             
+    if manual:
+        manual_x, manual_y = zip(*manual)
+        plt.scatter(manual_x, manual_y, color='blue', s=50, marker='s', alpha=0.7, label='Unique Manual')    
+    
+    if script:
+        script_x, script_y = zip(*script)
+        plt.scatter(script_x, script_y, color='green', s=50, marker='^', alpha=0.7, label='Unique Script')
+    
+    plt.title('Peaks Found')
+    plt.legend()
+    plt.show()
+
 def main(file_path, threshold_value, display=True):
     image_array = load_file_h5(file_path) # load_file_h5
     threshold_processor = PeakThresholdProcessor(image_array, threshold_value)
@@ -212,12 +239,10 @@ def main(file_path, threshold_value, display=True):
     print(f'Found {len(coordinates)} peaks above threshold {threshold_value}')
     if display:
             display_peak_regions(image_array, coordinates)
-            
     return coordinates
 
 if __name__ == "__main__":
-    work = False
-    image_data, file_path = load_data(work) # from test.py in peakfinder_ml
+    image_data, file_path = load_data(False) # from test.py in peakfinder_ml
     threshold = 1000
     coordinates = main(file_path, threshold, display=True)
 
@@ -230,7 +255,7 @@ if __name__ == "__main__":
     peaks = threshold_processor.get_local_maxima()
     
     # validates that peaks in script are the same as manually found peaks
-    confirmed_common_peaks, _, _ = validate(coordinates, peaks, image_data) # manually found and script found
+    confirmed_common_peaks, confirmed_unique_manual, confirmed_unique_script = validate(coordinates, peaks, image_data) # manually found and script found
     confirmed_common_peaks = list(confirmed_common_peaks)
     
     # prints menu to view neighborhood
@@ -240,3 +265,4 @@ if __name__ == "__main__":
     labeled_array = generate_labeled_image(image_data, confirmed_common_peaks, neighborhood_size=5)
     generate_labeled_h5(labeled_array)
     
+    visualize(confirmed_common_peaks, confirmed_unique_manual, confirmed_unique_script, image_data)
