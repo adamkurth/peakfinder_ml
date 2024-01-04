@@ -29,7 +29,7 @@ echo "#SBATCH --error    $RUN.err" >> $SLURMFILE
 echo >> $SLURMFILE
 
 command_line1="module load python/3.7.1"
-command_line2="python ccn_test.py agave_dir"
+command_line2="python ccn_test.py /home/amkurth/Development/pattern_simulations/sim_3_3e5keV/"
 echo $command_line1 >> $SLURMFILE
 echo $command_line2 >> $SLURMFILE
 
