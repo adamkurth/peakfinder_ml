@@ -2,8 +2,8 @@ import os
 import numpy as np
 import h5py as h5
 import matplotlib.pyplot as plt
-import ast # for string to list conversion
 import glob
+import h5py 
 from scipy.signal import find_peaks
 
 class PeakThresholdProcessor: 
@@ -191,6 +191,19 @@ def generate_labeled_image(image_data, peak_coordinates, neighborhood_size):
     print('Generated labeled image.')
     return labeled_image
 
+def generate_labeled_h5(labeled_array):
+    generate_image = input("Do you want to generate a new .h5 image? (yes/no): ")
+    if generate_image.lower() == "yes":
+        file_name = input("Enter the file name for the new .h5 image: ")
+        with h5py.File(file_name, "w") as f:
+            entry = f.create_group("entry")
+            data = entry.create_group("data")
+            data_2 = data.create_group("data")
+            data_2.create_dataset("labeled_array", data=labeled_array)
+        print(f"New .h5 image '{file_name}' generated.")
+    else:
+        print("No new .h5 image generated.")
+            
 def main(file_path, threshold_value, display=True):
     image_array = load_file_h5(file_path) # load_file_h5
     threshold_processor = PeakThresholdProcessor(image_array, threshold_value)
@@ -224,4 +237,6 @@ if __name__ == "__main__":
     view_neighborhood(confirmed_common_peaks, image_data)
     
     # return labeled array for training
-    labeled_array = generate_labeled_image(image_data, confirmed_common_peaks)
+    labeled_array = generate_labeled_image(image_data, confirmed_common_peaks, neighborhood_size=5)
+    generate_labeled_h5(labeled_array)
+    
