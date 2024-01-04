@@ -214,7 +214,7 @@ def preprocess():
             home_dir ='/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
             return home_dir
         elif chosen_path == 'agave_dir':
-            agave_dir = '/home/adamkurth/Development/pattern_simulations/sim_3_3e5keV/'
+            agave_dir = '~/Development/pattern_simulations/sim_3_3e5keV/*.h5'
             return agave_dir
         else:
             raise ValueError("Invalid directory path provided: " + chosen_path)
