@@ -105,7 +105,7 @@ class CCN(nn.Module):
     
 def preprocess():
     def load_tensor(directory_path):
-        file_pattern = directory_path + '*.h5'
+        file_pattern = os.path.join(directory_path, '*.h5')
         tensor_list = []
 
         for file_path in glob.glob(file_pattern):
@@ -207,18 +207,15 @@ def preprocess():
     # toggle between work, home, or agave directory
     def choose_path():
         chosen_path = sys.argv[1]
-        if chosen_path == 'work_dir':
-            work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
-            return work_dir
-        elif chosen_path == 'home_dir':
-            home_dir ='/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
-            return home_dir
-        elif chosen_path == 'agave_dir':
-            agave_dir = '~/Development/pattern_simulations/sim_3_3e5keV/*.h5'
-            return agave_dir
+        if chosen_path is not None:
+            return chosen_path
         else:
             raise ValueError("Invalid directory path provided: " + chosen_path)
-    
+
+    # work_dir = '/home/labuser/Development/adam/vscode/waterbackground_subtraction/images/'
+    # home_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
+    # agave_dir = '/home/amkurth/Development/pattern_simulations/sim_3_3e5keV/'
+
     choice = choose_path()
     combined_tensor, directory_path = load_tensor(choice)
     print(f'Type of combined_label_tensor: {type(combined_tensor)}')
