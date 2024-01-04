@@ -2,6 +2,8 @@ import os
 import glob
 import h5py as h5
 import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from label_finder import(
     PeakThresholdProcessor,
     ArrayRegion, 
@@ -15,7 +17,6 @@ from label_finder import(
     visualize,
     main,
     )                     
-import matplotlib.pyplot as plt
 from skimage.feature import peak_local_max
 from sklearn.mixture import GaussianMixture
 
@@ -61,60 +62,105 @@ def cluster(confirmed_coordinates, image_array):
     features_array = np.array(features)
     return features_array    
 
-def guassian_mixture_model(n, features, covariance_type='full', random_state=None):
+def guassian_mixture_model(features, random_state=None):
     """
     Guassian Mixture Model:
     - probabilistic model for representing normally distributed subpopulations within an overall population
     - think of best as a generalization of k-means clustering
     - when calculating the covariance matrix becomes too difficult, known to diverge (infinite likelihoods)
     - Recall: A covariance matrix represents the relationships between different variables in a multivariate distribution. 
+
     Args:
-        n (int): number of clusters
         features (array): Array of shape (n_samples, n_features) representing the input data. Each row corresponds to a sample, and each column corresponds to a feature.
-        covariance_type (str, optional): Covariance type for the Gaussian Mixture Model. Options are 'full', 'tied', 'diag', 'spherical'. Defaults to 'full'.
         random_state (int, RandomState instance or None, optional): Random state for reproducible results. Defaults to None.
 
     Returns:
+        best_n (int): The optimal number of clusters determined by BIC.
         labels (array): Array of shape (n_samples,) representing the predicted cluster labels for each sample.
     """    
-    gmm = GaussianMixture(n_components=n, covariance_type=covariance_type, random_state=random_state)
-    gmm.fit(features)
-    labels = gmm.predict(features)
-    return labels
+    lowest_bic = np.infty
+    best_n = None
+    best_labels = None
 
+    for n in range(1, 11):
+        gmm = GaussianMixture(n_components=n, covariance_type='full', random_state=random_state)
+        gmm.fit(features)
+        bic = gmm.bic(features)
+        if bic < lowest_bic:
+            lowest_bic = bic
+            best_n = n
+            best_labels = gmm.predict(features)
 
-def plot_clusters(n, labels, features_array):
-    colors = plt.cm.Pastel1(np.linspace(0, 1, n))
-    plt.imshow(image_array, cmap='grey')
-    for i in range(n):
-        cluster = features_array[labels==i, :]
-        plt.scatter(cluster[:, 1], cluster[:, 0], s=5, label=f'Cluster {i}', color=colors[i])
+    return best_n, best_labels
+
+def visualize_clusters(n, labels, features_array, image_array):
+    def plot_clusters(n, labels, features_array):
+        colors = plt.cm.Set1(np.linspace(0, 1, n))
+        plt.imshow(image_array, cmap='gray')
+        plt.gca().set_facecolor('black')
         
-        if np.count_nonzero(labels == i) > 0:
-            avg_cluster = np.mean(cluster[:, 2])
-            plt.text(np.mean(cluster[:, 1]), np.mean(cluster[:, 0]), f'Avg: {avg_cluster:.4f}', color=colors[i], fontsize=8, ha='center', va='center')
-    plt.legend(loc='upper right', numpoints=1)
-    plt.show()
-
-def plot_hist(labels, features_array):
-    n_components = len(np.unique(labels))
-    fig, axs = plt.subplots(1, n_components, figsize=(12, 4))
+        avg_cluster_values = [np.mean(features_array[labels==i, 2]) for i in range(n)]
+        sorted_indices = np.argsort(avg_cluster_values)[::-1]  # Sort the indices in descending order
+        
+        for i in sorted_indices:
+            cluster = features_array[labels==i, :]
+            plt.scatter(cluster[:, 1], cluster[:, 0], s=5, label=f'Cluster {i}', color=colors[i])
+            
+            if np.count_nonzero(labels == i) > 0:
+                avg_cluster = np.mean(cluster[:, 2])
+                plt.text(np.mean(cluster[:, 1]), np.mean(cluster[:, 0]), f'Avg: {avg_cluster:.4f}', color=colors[i], fontsize=8, ha='center', va='center')
+        
+        avg_legend = [plt.Line2D([0], [0], marker='o', color=colors[i], markerfacecolor='black', markersize=5) for i in sorted_indices]
+        avg_labels = [f'Avg: {np.mean(features_array[labels==i, 2]):.4f}' for i in sorted_indices]
+        plt.legend(avg_legend + avg_legend, avg_labels + avg_labels, loc='upper right', fontsize='small', numpoints=1)
+        plt.show()
+        
+    def plot_hist(labels, features_array):
+        n_components = len(np.unique(labels))
+        num_cells = n_components // 2  # Divide the number of components by 2 to get the number of cells
+        fig, axs = plt.subplots(2, num_cells, figsize=(12, 8), sharey=True)  # Create a 2xnum_cells grid of subplots
+        
+        for i in range(n_components):
+            if i < len(features_array):
+                component = features_array[labels == i, 2]
+                row = i // num_cells  # Calculate the row index
+                col = i % num_cells  # Calculate the column index
+                axs[row, col].hist(component, bins=10, color='skyblue', edgecolor='black')
+                axs[row, col].set_title(f'Component {i}')
+                axs[row, col].set_xlabel('Intensity')
+                axs[row, col].set_ylabel('Frequency')
+        
+        plt.tight_layout()
+        plt.show()
+        
+    def plotly_clusters(labels, features_array):
+        fig = go.Figure()
+        n_components = len(np.unique(labels))
+        
+        for i in range(n_components):
+            if i < len(features_array):
+                component = features_array[labels == i, 2]
+                fig.add_trace(go.Histogram(x=component, nbinsx=10, name=f'Component {i}'))
+        
+        fig.update_layout(
+            title="Histogram of Intensity",
+            xaxis_title="Intensity",
+            yaxis_title="Frequency",
+            barmode="overlay",
+            bargap=0.1
+        )
+        
+        fig.show()
     
-    for i in range(n_components):
-        component = features_array[labels == i, 2]
-        axs[i].hist(component, bins=10, color='skyblue', edgecolor='black')
-        axs[i].set_title(f'Component {i}')
-        axs[i].set_xlabel('Intensity')
-        axs[i].set_ylabel('Frequency')
-    
-    plt.tight_layout()
-    plt.show()
+    plot_clusters(n, labels, features_array)
+    plot_hist(labels, features_array)
+    plotly_clusters(labels, features_array)
     
 if __name__ == '__main__':
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
     features_array = cluster(confirmed_coordinates, image_array)
-    labels = guassian_mixture_model(2, features_array)
-    plot_clusters(2, labels, features_array)
-    # plot_hist(labels, features_array)
-   
+    best_n, labels = guassian_mixture_model(features_array)
+    
+    visualize_clusters(best_n, labels, features_array, image_array)
+ 
