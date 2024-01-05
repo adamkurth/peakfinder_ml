@@ -142,7 +142,7 @@ def svm_hyperparameter_tuning(X_train, y_train):
     grid_search = GridSearchCV(svm.SVC(), param_grid, refit = True, verbose = 3) #5 fold cross validation
     grid_search.fit(X_train, y_train)
     
-    print(f'Best parameters found : {grid_search.best_params_}')
+    print(f'Best parameters found: {grid_search.best_params_}')
     return grid_search.best_estimator_ 
     
 def svm_cross_validation(svm_model, X, y, cv=5):
@@ -196,21 +196,20 @@ def svm_classification(X, y, downsample=False, sample_size=None):
 def show_svm_results(y_true, y_pred, classes=None):
     """Visualize the results of the SVM classification.
     Args:
-        y_true (): The true labels of data.
-        y_pred (_type_): predicted labels of data by the SVM model.
-        classes (_type_, optional): List of class names for better readability in plots.
+        y_true (np.array with boolean mask): The true labels of data.
+        y_pred (np.array): predicted labels of data by the SVM model.
+        classes (list): List of class names for better readability in plots.
     """
     print(f'Classification report for SVM: {classification_report(y_true, y_pred, target_names=classes)}')
 
     conf_mat = confusion_matrix(y_true, y_pred)
 
     plt.figure(figsize=(8, 6))
-    sns.heatmat(conf_mat, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
+    sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
     plt.title('Confusion Matrix')
     plt.xlabel('Predicted Label')
     plt.ylabel('True Label')
     plt.show()
-    
     
     
 if __name__ == "__main__":
