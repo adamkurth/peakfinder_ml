@@ -97,7 +97,20 @@ def guassian_mixture_model(features, random_state=None):
 
     print("Initial BIC:", gmm.bic(features))
     print("Number of Iterations:", gmm.n_iter_)
-    print("Optimal BIC:", lowest_bic)
+    print("Optimal BIC:", lowest_bic, '\n')
+
+    print("Optimal Number of Components:", best_n)
+    print("Optimal Covariance Type:", best_gmm.covariance_type)
+    print("Optimal Means:\n", best_gmm.means_, '\n')
+    
+    print("Optimal Weights:", best_gmm.weights_)
+    
+    avg_cluster_values = [np.mean(features[best_labels==i, 2]) for i in range(best_n)]
+    sorted_indices = np.argsort(avg_cluster_values)
+    sorted_cluster_values = [np.mean(features[best_labels==i]) for i in sorted_indices]
+    percentage_increase = [(sorted_cluster_values[i+1] - sorted_cluster_values[i]) / sorted_cluster_values[i] * 100 for i in range(best_n-1)]
+    for i, increase in enumerate(percentage_increase):
+        print(f"Percentage Increase from Component {sorted_indices[i]} to Component {sorted_indices[i+1]}: {increase:.2f}%")
 
     return best_n, best_labels, best_gmm
 
