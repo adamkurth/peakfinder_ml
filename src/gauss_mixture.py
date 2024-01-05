@@ -141,16 +141,16 @@ def visualize_clusters(n, labels, features_array, image_array):
         n_components = len(np.unique(labels))
         num_cells = n_components // 2  # Divide the number of components by 2 to get the number of cells
         fig, axs = plt.subplots(2, num_cells, figsize=(12, 8), sharey=True)  # Create a 2xnum_cells grid of subplots
-        
+
         for i in range(n_components):
-            if i < len(features_array):
+            if i < len(features_array) and i < len(axs.flat):
                 component = features_array[labels == i, 2]
                 row = i // num_cells  # Calculate the row index
                 col = i % num_cells  # Calculate the column index
-                axs[row, col].hist(component, bins=10, color='skyblue', edgecolor='black')
-                axs[row, col].set_title(f'Component {i}')
-                axs[row, col].set_xlabel('Intensity')
-                axs[row, col].set_ylabel('Frequency')
+                axs.flat[i].hist(component, bins=10, color='skyblue', edgecolor='black')
+                axs.flat[i].set_title(f'Component {i}')
+                axs.flat[i].set_xlabel('Intensity')
+                axs.flat[i].set_ylabel('Frequency') 
         
         plt.tight_layout()
         plt.show()
@@ -183,5 +183,5 @@ if __name__ == '__main__':
     confirmed_coordinates, image_array = pre_process(image_choice)
     features_array = cluster(confirmed_coordinates, image_array)
     best_n, labels, best_gmm = guassian_mixture_model(features_array)
-    # visualize_clusters(best_n, labels, features_array, image_array)
+    visualize_clusters(best_n, labels, features_array, image_array)
  
