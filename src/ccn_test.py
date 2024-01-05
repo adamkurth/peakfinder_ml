@@ -308,3 +308,6 @@ if __name__ == '__main__':
     img_height, img_width = combined_tensor.shape[1], combined_tensor.shape[2]
     model = train(train_loader, img_height, img_width)
     accuracy = evaluate_model(model, test_loader)
+    
+    # labels shape: torch.Size([8]) - model is trained on batches of 8 images at a time
+    # loss 
