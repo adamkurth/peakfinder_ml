@@ -3,7 +3,6 @@ import glob
 import h5py as h5
 import numpy as np
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 from label_finder import(
     PeakThresholdProcessor,
     ArrayRegion, 
@@ -22,10 +21,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn import svm 
-from sklearn.svm import LinearSVC
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import GridSearchCV
 from sklearn.decomposition import PCA
+import seaborn as sns
 
 class PeakThresholdProcessor: 
     def __init__(self, image_array, threshold_value=0):
@@ -191,7 +190,29 @@ def svm_classification(X, y, downsample=False, sample_size=None):
     y_pred = best_svm_model.predict(X_test)
     print('Classification report for SVM: \n', classification_report(y_test, y_pred))
     print('Confusion matrix for SVM: \n', confusion_matrix(y_test, y_pred))
+    show_svm_results(y_test, y_pred, classes=['Not a peak', 'Peak'])
+    return best_svm_model, X_test, y_test, y_pred, confusion_matrix(y_test, y_pred)
 
+def show_svm_results(y_true, y_pred, classes=None):
+    """Visualize the results of the SVM classification.
+    Args:
+        y_true (): The true labels of data.
+        y_pred (_type_): predicted labels of data by the SVM model.
+        classes (_type_, optional): List of class names for better readability in plots.
+    """
+    print(f'Classification report for SVM: {classification_report(y_true, y_pred, target_names=classes)}')
+
+    conf_mat = confusion_matrix(y_true, y_pred)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmat(conf_mat, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
+    plt.show()
+    
+    
+    
 if __name__ == "__main__":
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
