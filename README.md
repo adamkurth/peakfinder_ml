@@ -186,7 +186,7 @@ Cross-Validation is used to ensure that the model's performance is robust and no
 ### Feature Engineering: 
 Feature engineering involves creating or transforming features to improve the model's performance. This might include applying transformations like PCA to reduce dimensionality to capture more complex relationships in the data.
 
-### **Model Evaluation**: 
+### Model Evaluation: 
 Post-training, the model is evaluated using a test set. Key metrics provided include a classification report (precision, recall, f1-score) and a confusion matrix.
 
 - **Precision**: The ratio of correctly predicted positive observations to the total predicted positives. High precision relates to a low false positive rate.
@@ -202,6 +202,12 @@ Post-training, the model is evaluated using a test set. Key metrics provided inc
     $$F1 Score = 2*\frac{Precision * Recall}{Precision + Recall}$$
 
 - **Confusion Matrix**: A table used to describe the performance of the classification model on a set of test data for which the true values are known. It allows visualization of the performance of the algorithm.
+
+Confusion Matrix: 
+- True Negative (top left) negative samples correctly identified of not peak
+- False Positive (top right) negative samples incorrectly identified as peak
+- False Negative (bottom left) positive samples incorrectly identified as not peak
+- True Positive (bottom right) positive samples correctly identified as peak
 
 ## Usage:
 To use this SVM implementation:

@@ -3,6 +3,7 @@ import glob
 import h5py as h5
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from label_finder import(
     PeakThresholdProcessor,
     ArrayRegion, 
@@ -17,14 +18,15 @@ from label_finder import(
     main,
     )                     
 from scipy.signal import find_peaks
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn import svm 
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import GridSearchCV
+import sklearn.svm as sklearn_svm
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.decomposition import PCA
-import seaborn as sns
+from scipy.ndimage import gaussian_gradient_magnitude, generic_filter
+from skimage.feature import peak_local_max
+from skimage.morphology import dilation, square
 
 class PeakThresholdProcessor: 
     def __init__(self, image_array, threshold_value=0):
@@ -125,96 +127,141 @@ def pre_process(image_choice):
     confirmed_coordinates = list(confirmed_coordinates)
     return confirmed_coordinates, image_array    
 
-def downsample_data(X, y, sample_size):
-    # ensure sample size is smaller than total
-    assert sample_size < X.shape[0], "Sample size must be smaller than total number of samples."
-    # get random indices
-    indices = np.random.choice(X.shape[0], sample_size, replace=False)
-    # extract
-    X_downsampled = X[indices]
-    y_downsampled = y[indices]
-    return X_downsampled, y_downsampled
-    
-def svm_hyperparameter_tuning(X_train, y_train):
-    param_grid = {'C': [0.1, 1, 10, 100, 1000],  
-                  'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
-                  'kernel': ['rbf']}
-    grid_search = GridSearchCV(svm.SVC(), param_grid, refit = True, verbose = 3) #5 fold cross validation
-    grid_search.fit(X_train, y_train)
-    
-    print(f'Best parameters found: {grid_search.best_params_}')
-    return grid_search.best_estimator_ 
-    
-def svm_cross_validation(svm_model, X, y, cv=5):
-    scores = cross_val_score(svm_model, X, y, cv=cv)
-    print(f"Cross validation scores: {scores}")
-    print(f"Mean cross validation score: {scores.mean():.3f}")
-    print(f"Standard deviation of cross validation scores: {scores.std():.3f}")
+def svm(image_array, confirmed_coordinates):
+    def downsample_data(X, y, sample_size):
+        if sample_size >= X.shape[0]:
+            raise ValueError("Sample size must be smaller than the total number of samples.")
+        # get random indices
+        indices = np.random.choice(X.shape[0], sample_size, replace=False)
+        # extract
+        X_downsampled = X[indices]
+        y_downsampled = y[indices]
+        return X_downsampled, y_downsampled
+        
+    def svm_hyperparameter_tuning(X_train, y_train):
+        param_grid = {'C': [0.1, 1, 10, 100, 1000],  
+                    'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
+                    'kernel': ['rbf']}
+        grid_search = GridSearchCV(sklearn_svm.SVC(), param_grid, refit = True, verbose = 3, error_score='raise') #5 fold cross validation
+        grid_search.fit(X_train, y_train)
+        
+        print(f'Best parameters found: {grid_search.best_params_}')
+        return grid_search.best_estimator_ 
+        
+    def svm_cross_validation(svm_model, X, y, cv=5):
+        scores = cross_val_score(svm_model, X, y, cv=cv)
+        print(f"Cross validation scores: {scores}")
+        print(f"Mean cross validation score: {scores.mean():.3f}")
+        print(f"Standard deviation of cross validation scores: {scores.std():.3f}")
 
-def apply_pca(X, n_components=2):
-    pca = PCA(n_components=n_components)
-    X_pca = pca.fit_transform(X)
-    print(f'Original number of features: {X.shape[1]}')
-    print(f'Reduced number of features: {X_pca.shape[1]}')
-    return X_pca
+    def apply_pca(X, n_components=2):
+        pca = PCA(n_components=n_components)
+        X_pca = pca.fit_transform(X)
+        print(f'Original number of features: {X.shape[1]}')
+        print(f'Reduced number of features: {X_pca.shape[1]}')
+        return X_pca
+    
+    def extract_features(image_array, confirmed_coordinates, neighborhood_size=5, threshold=200):
+        """Extracts features from the image array.
+        Args:
+            image_array (np.array): image data
+            confirmed_coordinates (list(tuples)): size of neighborhood to be considered
+            neighborhood_size (int, optional): defaults to 5
+            threshold (int, optional): threshold to be considered a peak
+        Returns:
+            features (np.array): a feature array where each row corresponds to a peak
+        """
+        # gradient magnitude
+        grad_mag = gaussian_gradient_magnitude(image_array, sigma=1)
+        
+        dilated_image = dilation(image_array, square(neighborhood_size))
+        
+        def local_stats(neighborhood, threshold=400):
+            center = neighborhood[neighborhood_size // 2, neighborhood_size // 2]
+            return [
+                np.max(neighborhood) - center, # max - center
+                np.mean(neighborhood > threshold), # fraction of high values
+            ]
+        
+        features_list = []
+        
+        for coord in confirmed_coordinates:
+            x, y = coord
+            # region around peak
+            region = ArrayRegion(image_array).extract_region(x, y, neighborhood_size)
+            
+            # compute the local stats for the region
+            local_feature = local_stats(region, threshold)
+            
+            # extract other features such as gradient magnitude and dilated image
+            grad_feature = grad_mag[x, y]
+            dilated_feature = dilated_image[x, y]
+            
+            # combine features
+            peak_features = np.array([image_array[x, y], grad_feature, dilated_feature] + local_feature)
+            
+            features_list.append(peak_features)
+            
+        features = np.stack(features_list, axis=0)
+        return features
+    
+    def svm_classification(image_array, labeled_array, confirmed_coordinates, downsample=False, sample_size=None): 
+        threshold = 200   
+        # Extract features from the image based on the confirmed coordinates
+        X = extract_features(image_array, confirmed_coordinates, neighborhood_size=5, threshold=threshold)        
 
-def svm_classification(X, y, downsample=False, sample_size=None):
-    if downsample and sample_size:
-        X, y = downsample_data(X, y, sample_size)
+        print(f"Total number of confirmed coordinates: {len(confirmed_coordinates)}")
+        print(f"Shape of X (feature array): {X.shape}")
+        print(f"Requested sample size: {sample_size}")
+        
+        # Create binary labels for peaks
+        y = labeled_array 
+        
+        if downsample and sample_size:
+            if sample_size >= len(confirmed_coordinates):
+                raise ValueError("Sample size must be smaller than the total number of confirmed coordinates.")
+            X, y = downsample_data(X, y, sample_size)
+                
+        # Split the data into training and testing sets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+        
+        # Standardize features
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+        
+        # Hyperparameter tuning
+        best_svm_model = svm_hyperparameter_tuning(X_train, y_train)
+        
+        # Training best model from hyperparameter tuning
+        print("Training the SVM...")
+        best_svm_model.fit(X_train, y_train)
+        print("Training completed.")
+        
+        # Predict and evaluate
+        y_pred = best_svm_model.predict(X_test)
+        print('Classification report for SVM: \n', classification_report(y_test, y_pred))
+        print('Confusion matrix for SVM: \n', confusion_matrix(y_test, y_pred))
+        
+        return best_svm_model, X_test, y_test, y_pred, confusion_matrix(y_test, y_pred)
     
-    X_flattened = X.reshape(-1, 1)  # Reshape X to (n_samples, n_features)
-    y_flattened = y.ravel()  # Flatten y to 1D
+    labeled_array = generate_labeled_image(image_array, confirmed_coordinates, 5)
+    _, _, _, _, _ = svm_classification(image_array, labeled_array, confirmed_coordinates, downsample=True, sample_size=10)
     
-    print("Shape of X before splitting:", X_flattened.shape)
-    print("Shape of y before splitting:", y_flattened.shape)
-    
-    if X_flattened.shape[0] != y_flattened.shape[0]:
-        raise ValueError("The number of samples in X and y must match.")
-    
-    X_train, X_test, y_train, y_test = train_test_split(X_flattened, y_flattened, test_size=0.20, random_state=42)
-    
-    # removing mean and scaling to unit variance
-    scale = StandardScaler()
-    X_train = scale.fit_transform(X_train)
-    X_test = scale.transform(X_test)
-    
-    # hyperparameter tuning 
-    best_svm_model = svm_hyperparameter_tuning(X_train, y_train)
 
-    # training best model from hyperparameter tuning
-    print("Training the SVM...")
-    best_svm_model.fit(X_train, y_train)
-    print("Training completed.")
-    
-    # predict and evaluate
-    y_pred = best_svm_model.predict(X_test)
-    print('Classification report for SVM: \n', classification_report(y_test, y_pred))
-    print('Confusion matrix for SVM: \n', confusion_matrix(y_test, y_pred))
-    show_svm_results(y_test, y_pred, classes=['Not a peak', 'Peak'])
-    return best_svm_model, X_test, y_test, y_pred, confusion_matrix(y_test, y_pred)
-
-def show_svm_results(y_true, y_pred, classes=None):
-    """Visualize the results of the SVM classification.
-    Args:
-        y_true (np.array with boolean mask): The true labels of data.
-        y_pred (np.array): predicted labels of data by the SVM model.
-        classes (list): List of class names for better readability in plots.
-    """
-    print(f'Classification report for SVM: {classification_report(y_true, y_pred, target_names=classes)}')
-
-    conf_mat = confusion_matrix(y_true, y_pred)
-
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
-    plt.title('Confusion Matrix')
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
-    plt.show()
-    
     
 if __name__ == "__main__":
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
-    labeled_image = generate_labeled_image(image_array, confirmed_coordinates, 5)
+    svm(image_array, confirmed_coordinates)
 
-    svm_classification(image_array, labeled_image, downsample=True, sample_size=1000)
+
+
+#    visualizing the confusion matrix: 
+#       - True Negative (top left) negative samples correctly identified of not peak
+#       - False Positive (top right) negative samples incorrectly identified as peak
+#       - False Negative (bottom left) positive samples incorrectly identified as not peak
+#       - True Positive (bottom right) positive samples correctly identified as peak
+# 
+#    - Precision: TP / (TP + FP) = TP / predicted positive
+#    - Recall: TP / (TP + FN) = TP / actual positive
