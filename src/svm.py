@@ -23,7 +23,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn import svm 
 from sklearn.svm import LinearSVC
-from tqdm import tqdm
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.decomposition import PCA
 
 class PeakThresholdProcessor: 
     def __init__(self, image_array, threshold_value=0):
@@ -134,6 +136,29 @@ def downsample_data(X, y, sample_size):
     y_downsampled = y[indices]
     return X_downsampled, y_downsampled
     
+def svm_hyperparameter_tuning(X_train, y_train):
+    param_grid = {'C': [0.1, 1, 10, 100, 1000],  
+                  'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
+                  'kernel': ['rbf']}
+    grid_search = GridSearchCV(svm.SVC(), param_grid, refit = True, verbose = 3) #5 fold cross validation
+    grid_search.fit(X_train, y_train)
+    
+    print(f'Best parameters found : {grid_search.best_params_}')
+    return grid_search.best_estimator_ 
+    
+def svm_cross_validation(svm_model, X, y, cv=5):
+    scores = cross_val_score(svm_model, X, y, cv=cv)
+    print(f"Cross validation scores: {scores}")
+    print(f"Mean cross validation score: {scores.mean():.3f}")
+    print(f"Standard deviation of cross validation scores: {scores.std():.3f}")
+
+def apply_pca(X, n_components=2):
+    pca = PCA(n_components=n_components)
+    X_pca = pca.fit_transform(X)
+    print(f'Original number of features: {X.shape[1]}')
+    print(f'Reduced number of features: {X_pca.shape[1]}')
+    return X_pca
+
 def svm_classification(X, y, downsample=False, sample_size=None):
     if downsample and sample_size:
         X, y = downsample_data(X, y, sample_size)
@@ -148,38 +173,28 @@ def svm_classification(X, y, downsample=False, sample_size=None):
         raise ValueError("The number of samples in X and y must match.")
     
     X_train, X_test, y_train, y_test = train_test_split(X_flattened, y_flattened, test_size=0.20, random_state=42)
+    
+    # removing mean and scaling to unit variance
     scale = StandardScaler()
     X_train = scale.fit_transform(X_train)
     X_test = scale.transform(X_test)
     
-    # Set dual=False for better performance when n_samples > n_features
-    clf = LinearSVC(max_iter=1000, dual=False)
+    # hyperparameter tuning 
+    best_svm_model = svm_hyperparameter_tuning(X_train, y_train)
+
+    # training best model from hyperparameter tuning
     print("Training the SVM...")
-    clf.fit(X_train, y_train)
+    best_svm_model.fit(X_train, y_train)
     print("Training completed.")
     
-    y_pred = clf.predict(X_test)
+    # predict and evaluate
+    y_pred = best_svm_model.predict(X_test)
     print('Classification report for SVM: \n', classification_report(y_test, y_pred))
     print('Confusion matrix for SVM: \n', confusion_matrix(y_test, y_pred))
-
-
-# def plot_results(data, anomalies):
-#     data_x = [coord[0] for coord in data]
-#     data_y = [coord[1] for coord in data]
-#     anomalies_x = [anomaly[0] for anomaly in anomalies]
-#     anomalies_y = [anomaly[1] for anomaly in anomalies]
-    
-#     plt.scatter(data_x, data_y, color='k', s=3, label='Data Points')  # All data points
-#     plt.scatter(anomalies_x, anomalies_y, color='r', s=10, label='Anomalies')  # Anomalies in red
-#     plt.title('Isolation Forest Anomalies')
-#     plt.xlabel('X coordinate')
-#     plt.ylabel('Y coordinate')
-#     plt.legend()
-#     plt.show()
 
 if __name__ == "__main__":
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
     labeled_image = generate_labeled_image(image_array, confirmed_coordinates, 5)
-    
+
     svm_classification(image_array, labeled_image, downsample=True, sample_size=1000)
