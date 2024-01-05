@@ -18,7 +18,8 @@ from label_finder import(
     main,
     )                     
 from skimage.feature import peak_local_max
-from sklearn.mixture import GaussianMixture
+from scipy.signal import find_peaks
+from sklearn.ensemble import IsolationForest
 
 class PeakThresholdProcessor: 
     def __init__(self, image_array, threshold_value=0):
@@ -79,7 +80,12 @@ def load_data(choice):
         file_path = 'images/DATASET1-1.h5'
     elif choice == False:
         water_background_dir = '/Users/adamkurth/Documents/vscode/CXFEL_Image_Analysis/CXFEL/waterbackground_subtraction/images/'
-        file_path = os.path.join(water_background_dir,'9_18_23_high_intensity_3e8keV-2.h5')
+        files = glob.glob(os.path.join(water_background_dir, '*.h5'))
+        print("Select a file from the following options:")
+        for i, file in enumerate(files):
+            print(f"{i+1}. {file}")
+        file_index = int(input("Enter the file number: ")) - 1
+        file_path = files[file_index]
         
     matching_files = glob.glob(file_path)
     if not matching_files:
@@ -114,6 +120,51 @@ def pre_process(image_choice):
     confirmed_coordinates = list(confirmed_coordinates)
     return confirmed_coordinates, image_array    
 
+def isolation_forest(image_array, n_estimators=100, contamination='auto'):
+    """Applies the Isolation Forest to the features array.
+    Args:
+        :image_array (np.array): the data array to be clustered.
+        :n_estimators (int): The number of base estimators in the the ensemble.
+        :contamination (str): Isolation forest model and anaomaly score for each data point.
+    """
+    clf = IsolationForest(n_estimators=n_estimators, contamination=contamination)
+    clf.fit(image_array)
+    
+    # anomaly scores (lower = more abnormal)
+    scores = clf.decision_function(image_array)
+
+    # prediction: (-1 = outlier, 1 = inlier)
+    predictions = clf.predict(image_array)
+    print('count', np.count_nonzero(predictions != 1))   
+    print("Isolation Forest Evaluation:")
+    print("----------------------------")
+    print("Number of estimators:", clf.n_estimators)
+    print("Contamination:", clf.contamination)
+    print("Anomaly scores:", scores)
+    print("Predictions:", predictions)
+    return clf, scores, predictions
+
+def plot_results(data, anomalies):
+    data_x = [coord[0] for coord in data]
+    data_y = [coord[1] for coord in data]
+    anomalies_x = [anomaly[0] for anomaly in anomalies]
+    anomalies_y = [anomaly[1] for anomaly in anomalies]
+    
+    plt.scatter(data_x, data_y, color='k', s=3, label='Data Points')  # All data points
+    plt.scatter(anomalies_x, anomalies_y, color='r', s=10, label='Anomalies')  # Anomalies in red
+    plt.title('Isolation Forest Anomalies')
+    plt.xlabel('X coordinate')
+    plt.ylabel('Y coordinate')
+    plt.legend()
+    plt.show()
+
 if __name__ == "__main__":
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
+    
+    clf, scores, predictions = isolation_forest(image_array)
+    anomalies = image_array[predictions == -1]
+    plot_results(confirmed_coordinates, anomalies)
+    
+    
+    
