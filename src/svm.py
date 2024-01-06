@@ -132,29 +132,46 @@ def svm(image_array, confirmed_coordinates):
     def downsample_data(X, y, sample_size):
         if sample_size >= X.shape[0]:
             raise ValueError("Sample size must be smaller than the total number of samples.")
-        # get random indices
-        indices = np.random.choice(X.shape[0], sample_size, replace=False)
-        # extract
-        X_downsampled = X[indices]
-        y_downsampled = y[indices]
+        
+        # Get random indices for each class
+        indices_class_0 = np.where(y == 0)[0]
+        indices_class_1 = np.where(y == 1)[0]
+        
+        if len(indices_class_0) < sample_size // 2 or len(indices_class_1) < sample_size // 2:
+            raise ValueError("Insufficient samples in one or both classes to achieve the desired sample size.")
+    
+        # Randomly select samples for each class
+        selected_indices_class_0 = np.random.choice(indices_class_0, sample_size // 2, replace=False)
+        selected_indices_class_1 = np.random.choice(indices_class_1, sample_size // 2, replace=False)
+        
+        # Combine the selected samples
+        selected_indices = np.concatenate([selected_indices_class_0, selected_indices_class_1])
+            
+        # Shuffle the selected indices to mix both classes
+        np.random.shuffle(selected_indices)
+        
+        # Extract the downsampled data
+        X_downsampled = X[selected_indices]
+        y_downsampled = y[selected_indices]
+        
+        print(f'Downsampled data to {sample_size} samples. New shape: {X_downsampled.shape}, {y_downsampled.shape}\n')  
+        print(f'Unique labels: {np.unique(y_downsampled)}, Class counts: {np.bincount(y_downsampled)}\n')
+        print(f'Downsampling completed.\n')
         return X_downsampled, y_downsampled
         
     def svm_hyperparameter_tuning(X_train, y_train):
         import sklearn.svm as sklearn_svm
 
         unique_classes = np.unique(y_train)
-        
         if len(unique_classes) < 2:
             raise ValueError(f"The number of classes in the training set must be greater than one; got {len(unique_classes)} class(es).")
         
         param_grid = {'C': [0.1, 1, 10, 100, 1000],  
                     'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
-                    'kernel': ['rbf']}
-        
+                    'kernel': ['rbf']}        
         # tuning
         grid_search = GridSearchCV(sklearn_svm.SVC(), param_grid, refit = True, verbose = 3, error_score='raise') #5 fold cross validation
 
-        
         # fit the grid search model
         grid_search.fit(X_train, y_train)
         
@@ -244,21 +261,11 @@ def svm(image_array, confirmed_coordinates):
         print(f"Unique classes: {classes}")
         
         if downsample and sample_size:
-            peak_indices = np.where(y_flat == 1)[0]
-            non_peak_indices = np.where(y_flat == 0)[0]
+            X, y = downsample_data(X_flat, y_flat, sample_size)
             
-            # Ensure there's at least one peak and one non-peak
-            if len(peak_indices) > 0 and len(non_peak_indices) > 0:
-                sampled_peak_indices = np.random.choice(peak_indices, min(len(peak_indices), sample_size//2), replace=False)
-                sampled_non_peak_indices = np.random.choice(non_peak_indices, min(len(non_peak_indices), sample_size//2), replace=False)
-                sampled_indices = np.concatenate([sampled_peak_indices, sampled_non_peak_indices])
-            else:
-                raise ValueError("Not enough peak or non-peak data to perform downsampling.")
-            
-            X, y = X[sampled_indices], y[sampled_indices]
-            print(f'Shape after downsampling: {X.shape}, {y.shape}')            
+        print(f'Shape after downsampling: {X.shape}, {y.shape}')            
         
-        print(f'Shape before splitting: {X_flat.shape}, {y_flat.shape}')
+        print(f'Shape before splitting: {X.shape}, {y.shape}')
         
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
         
@@ -279,6 +286,7 @@ def svm(image_array, confirmed_coordinates):
         
         # # Predict and evaluate
         y_pred = best_svm_model.predict(X_test)
+        
         print('Classification report for SVM: \n', classification_report(y_test, y_pred))
         print('Confusion matrix for SVM: \n', confusion_matrix(y_test, y_pred))
         
