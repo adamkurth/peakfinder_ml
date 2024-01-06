@@ -13,7 +13,7 @@ from label_finder import(
     validate,
     is_peak,
     view_neighborhood, 
-    generate_labeled_image, 
+    # generate_labeled_image, 
     visualize,
     main,
     )                     
@@ -21,7 +21,8 @@ from scipy.signal import find_peaks
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn import svm 
-import sklearn.svm as sklearn_svm
+# import sklearn.svm as sklearn_svm
+
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.decomposition import PCA
 from scipy.ndimage import gaussian_gradient_magnitude, generic_filter
@@ -139,10 +140,22 @@ def svm(image_array, confirmed_coordinates):
         return X_downsampled, y_downsampled
         
     def svm_hyperparameter_tuning(X_train, y_train):
+        import sklearn.svm as sklearn_svm
+
+        unique_classes = np.unique(y_train)
+        
+        if len(unique_classes) < 2:
+            raise ValueError(f"The number of classes in the training set must be greater than one; got {len(unique_classes)} class(es).")
+        
         param_grid = {'C': [0.1, 1, 10, 100, 1000],  
                     'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
                     'kernel': ['rbf']}
+        
+        # tuning
         grid_search = GridSearchCV(sklearn_svm.SVC(), param_grid, refit = True, verbose = 3, error_score='raise') #5 fold cross validation
+
+        
+        # fit the grid search model
         grid_search.fit(X_train, y_train)
         
         print(f'Best parameters found: {grid_search.best_params_}')
@@ -173,7 +186,6 @@ def svm(image_array, confirmed_coordinates):
         """
         # gradient magnitude
         grad_mag = gaussian_gradient_magnitude(image_array, sigma=1)
-        
         dilated_image = dilation(image_array, square(neighborhood_size))
         
         def local_stats(neighborhood, threshold=400):
@@ -189,7 +201,6 @@ def svm(image_array, confirmed_coordinates):
             x, y = coord
             # region around peak
             region = ArrayRegion(image_array).extract_region(x, y, neighborhood_size)
-            
             # compute the local stats for the region
             local_feature = local_stats(region, threshold)
             
@@ -205,27 +216,55 @@ def svm(image_array, confirmed_coordinates):
         features = np.stack(features_list, axis=0)
         return features
     
-    def svm_classification(image_array, labeled_array, confirmed_coordinates, downsample=False, sample_size=None): 
-        threshold = 200   
-        # Extract features from the image based on the confirmed coordinates
-        X = extract_features(image_array, confirmed_coordinates, neighborhood_size=5, threshold=threshold)        
-
-        print(f"Total number of confirmed coordinates: {len(confirmed_coordinates)}")
-        print(f"Shape of X (feature array): {X.shape}")
-        print(f"Requested sample size: {sample_size}")
+    def labeled_peaks(image_array, conf_coordinates):
+        labeled_array = np.zeros_like(image_array, dtype=int)
+        for coord in conf_coordinates:
+            x, y = coord
+            if is_peak(image_array, (x, y), neighborhood_size=3):
+                labeled_array[x, y] = 1
+        return labeled_array    
+    
+    def svm_classification(image_array, confirmed_coordinates, downsample=False, sample_size=None):
+        # Initialize an empty labeled array with the same shape as the image_array
+        labeled_array = labeled_peaks(image_array, confirmed_coordinates)
         
-        # Create binary labels for peaks
-        y = labeled_array 
+        unique_labels = np.unique(labeled_array)
+        print(f"Unique labels: {unique_labels}")        
+        
+        num_peaks = np.sum(labeled_array == 1)
+        num_non_peaks = np.sum(labeled_array == 0)
+        print(f"Number of peaks: {num_peaks}, Number of non-peaks: {num_non_peaks}")
+
+        X = extract_features(image_array, confirmed_coordinates, neighborhood_size=5, threshold=200)
+        X_flat = X.reshape(-1, 1)
+        y_flat = labeled_array.ravel()
+        y_flat = y_flat.astype(int)
+        
+        classes = np.unique(y_flat)
+        print(f"Unique classes: {classes}")
         
         if downsample and sample_size:
-            if sample_size >= len(confirmed_coordinates):
-                raise ValueError("Sample size must be smaller than the total number of confirmed coordinates.")
-            X, y = downsample_data(X, y, sample_size)
-                
-        # Split the data into training and testing sets
+            peak_indices = np.where(y_flat == 1)[0]
+            non_peak_indices = np.where(y_flat == 0)[0]
+            
+            # Ensure there's at least one peak and one non-peak
+            if len(peak_indices) > 0 and len(non_peak_indices) > 0:
+                sampled_peak_indices = np.random.choice(peak_indices, min(len(peak_indices), sample_size//2), replace=False)
+                sampled_non_peak_indices = np.random.choice(non_peak_indices, min(len(non_peak_indices), sample_size//2), replace=False)
+                sampled_indices = np.concatenate([sampled_peak_indices, sampled_non_peak_indices])
+            else:
+                raise ValueError("Not enough peak or non-peak data to perform downsampling.")
+            
+            X, y = X[sampled_indices], y[sampled_indices]
+            print(f'Shape after downsampling: {X.shape}, {y.shape}')            
+        
+        print(f'Shape before splitting: {X_flat.shape}, {y_flat.shape}')
+        
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
         
-        # Standardize features
+        print(f'Shape after splitting: {X_train.shape}, {y_train.shape}')
+                
+        # # Standardize features
         scaler = StandardScaler()
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
@@ -238,17 +277,15 @@ def svm(image_array, confirmed_coordinates):
         best_svm_model.fit(X_train, y_train)
         print("Training completed.")
         
-        # Predict and evaluate
+        # # Predict and evaluate
         y_pred = best_svm_model.predict(X_test)
         print('Classification report for SVM: \n', classification_report(y_test, y_pred))
         print('Confusion matrix for SVM: \n', confusion_matrix(y_test, y_pred))
         
         return best_svm_model, X_test, y_test, y_pred, confusion_matrix(y_test, y_pred)
     
-    labeled_array = generate_labeled_image(image_array, confirmed_coordinates, 5)
-    _, _, _, _, _ = svm_classification(image_array, labeled_array, confirmed_coordinates, downsample=True, sample_size=10)
-    
 
+    best_svm_model, X_test, y_test, y_pred, confusion_matrix = svm_classification(image_array, confirmed_coordinates, downsample=True, sample_size=10)
     
 if __name__ == "__main__":
     image_choice = False    # True = work, False = home
