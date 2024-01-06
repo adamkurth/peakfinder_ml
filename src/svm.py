@@ -105,18 +105,7 @@ def load_data(choice):
         return data, file_path
     except Exception as e:
         raise OSError(f"Failed to read {file_path}: {e}")
-    
-def load_file_h5(file_path):
-    try:
-        with h5.File(file_path, "r") as f:
-            data = np.array(f["entry/data/data"][()])
-            print(f"File loaded successfully: \n {file_path}")
-            return data
-    except FileNotFoundError:
-        print(f"File not found: {file_path}")
-    except Exception as e:
-        print(f"An error occurred while loading the file: {str(e)}")
-        
+
 def pre_process(image_choice):
     image_array, path = load_data(image_choice)
     processor = PeakThresholdProcessor(image_array, 200)
@@ -299,8 +288,6 @@ if __name__ == "__main__":
     image_choice = False    # True = work, False = home
     confirmed_coordinates, image_array = pre_process(image_choice)
     svm(image_array, confirmed_coordinates)
-
-
 
 #    visualizing the confusion matrix: 
 #       - True Negative (top left) negative samples correctly identified of not peak
