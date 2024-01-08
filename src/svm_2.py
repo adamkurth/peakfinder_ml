@@ -4,7 +4,9 @@ import h5py as h5
 import glob 
 
 from sklearn import svm 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.svm import SVC as svc
+from sklean.utils import resample
 
 from label_finder import(
     PeakThresholdProcessor,
@@ -57,29 +59,114 @@ def labeled_array(image_array, coord_list):
             labeled[x, y] = 1
     return labeled # array
 
-def svm(image_array, conf_coord, downsample=False, sample_size=None):
+def svm_hyperparameter_tuning(X_train, y_train):
+    """Hyperparameter tuning for SVM model using GridSearchCV.
+    Args:
+        X_train (np.array): training data
+        y_train (np.array): target values for training data
+    Returns:
+        grid_search: GridSearchCV object that is the result of the hyperparameter tuning
+    """
+    param_grid = {'C': [0.1, 1, 10, 100, 1000],
+                    'gamma': [1, 0.1, 0.01, 0.001, 0.0001],
+                    'kernel': ['rbf']}
+    grid_search = GridSearchCV(svc(), param_grid, refit=True, verbose=2, cv=3)
+    y_train_flat = y_train.ravel()
+    grid_search.fit(X_train, y_train_flat)
+    print(f'Finished grid search...\n')
+    print(f'Best parameters: {grid_search.best_params_}')
+    print(f'Best estimator: {grid_search.best_estimator_}')
+    print(f'Best score: {grid_search.best_score_}')
+    return grid_search   
+    
+def svm_cross_validation(best_model, X, y, cv=5):
+    """Cross validation for SVM model.
+    Args:
+        best_model (SVC): the best model from hyperparameter tuning
+        X (np.array): image array data
+        y (np.array): labeled array data
+        cv (int, optional): Number of folds. Defaults to 5.
+    Returns:
+        scores, mean_scores: cross validation scores and mean scores
+    """
+    scores = cross_val_score(best_model, X, y, cv=cv)
+    print(f'Cross validation scores: {scores}')
+    print(f'Average cross validation score: {np.mean(scores)}')
+    return scores, np.mean(scores)
+
+def downsample_data(X, y, random_state=42):
+    """Downsamples th majority class to the size of the minority class.
+    Args:
+        X (np.array): Feature array
+        y (np.array): label array
+        random_state (int): random state for reproducibility
+        
+    Returns: X_downsampled, y_downsampled: downsampled feature and label arrays
+    """
+    #combine X, y into single dataset for resampling
+    data = np.hstack((X, y.reshape(-1, 1)))
+    
+    # identify the major and minority classes
+    majority_class = data[data[:, -1] == 0]
+    minority_class = data[data[:, -1] == 1]
+    
+    # downsample the majority class
+    majority_downsampled = resample(majority_class,
+                                    replace=False,
+                                    n_samples=len(minority_class),
+                                    random_state=random_state)
+    
+    # reassemble the downsampled dataset and shuffle
+    data_downsampled = np.vstack((majority_downsampled, minority_class))
+    np.shuffle(data_downsampled)
+    
+    # split downsampled data into feature and labeled arrays
+    X_downsampled = data_downsampled[:, :-1]
+    y_downsampled = data_downsampled[:, -1]
+    return X_downsampled, y_downsampled
+    
+def svm(image_array, conf_coord, downsample=True):
     label_array = labeled_array(image_array, conf_coord)
+    X = image_array
+    y = label_array
+        
+    # convert to 1D arrays
+    X_flat = image_array.reshape(-1, 1) 
+    y_flat = label_array.reshape(-1, 1)
+    # view_neighborhood(conf_coord, label_array)
     
-    X = image_array.reshape(-1, 1)
-    y = label_array.reshape(-1, 1)
-    view_neighborhood(conf_coord, label_array)
+    print(f'Number of non-zero elements in X_flat: {np.count_nonzero(X_flat)}') # return 7400397 for X_flat
+    print(f'Number of non-zero elements in X_flat: {np.count_nonzero(y_flat)}') # return 93 for y_flat
     
+    classes = np.unique(y_flat)
+    print(f'Types of classes: {classes}') # return [0 1]
     
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+    # split data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X_flat, y_flat, test_size=0.2, random_state=42)
     
+    if downsample: 
+        X_train, y_train = downsample_data(X_train, y_train)
+        
+    # hyperparameter tuning
+    grid_search = svm_hyperparameter_tuning(X_train, y_train)
     
-    # if downsample:
-    #     label_array = label_array[::downsample, ::downsample]
-    #     image_array = image_array[::downsample, ::downsample]
+    # predict
+    y_pred = grid_search.predict(X_test)
     
+    # cross validation
+    scores, mean_scores = svm_cross_validation(grid_search.best_estimator_, X, y, cv=5)
     
-    return 0
+    # accuracy
+    accuracy = grid_search.score(X_test, y_test)
+    print(f'Accuracy with the best estimator: {accuracy}') # return 0.9999988974428944
+
+    return grid_search.best_estimator_, y_pred, accuracy
 
 def main_():
     image_choice = False
     conf_coord, image_array = pre_process(image_choice)
     conf_coord = list(conf_coord)
-    svm(image_array, conf_coord, downsample=1, sample_size=None)
+    best_model, y_pred, accuracy = svm(image_array, conf_coord, downsample=True)
     
 if __name__ == '__main__':
     main_()
