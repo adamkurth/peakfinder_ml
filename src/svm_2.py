@@ -151,6 +151,8 @@ def accuracy_metrics(y_test, y_pred):
         Recall: Ability of the classifier to find all positive samples.     
         F1 Score: Harmonoic mean of the precision and recall, 1 is best, 0 is worst.
     """
+    y_test = y_test.ravel()
+    y_pred = y_pred.ravel()
     precision = precision_score(y_test, y_pred)
     recall = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
@@ -200,13 +202,9 @@ def svm(image_array, conf_coord, downsample=True):
     print(f'Accuracy with the best estimator: {accuracy}') # return 0.9999988974428944
     
     # confusion matrix
-    cm = confusion_matrix(y_test, y_pred)
+    cm = confusion_matrix(y_test.ravel(), y_pred)
     print(f'Confusion matrix:\n {cm}') 
-    
-    # pair confusion matrix
-    pcm = pair_confusion_matrix(y_test, y_pred)
-    print(f'Pair confusion matrix:\n {pcm}')
-    
+
     # accuracy metrics
     accuracy_metrics(y_test, y_pred)
     
