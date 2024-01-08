@@ -4,10 +4,13 @@ import h5py as h5
 import glob 
 import matplotlib.pyplot as plt
 
+
 from sklearn import svm 
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.svm import SVC as svc
 from sklearn.utils import resample
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
+from sklearn.metrics import pair_confusion_matrix
 from label_finder import(
     PeakThresholdProcessor,
     ArrayRegion,
@@ -134,14 +137,15 @@ def downsample_data(X, y, random_state=42):
     print(f'Finishing downsampling...')
     return X_downsampled, y_downsampled
     
-def visualize_peaks(X_test, y_pred):
-    plt.scatter(X_test[y_pred == 1, 0], X_test[y_pred == 1, 1], c='red', label='Predicted Peaks')
-    plt.scatter(X_test[y_pred == 0, 0], X_test[y_pred == 0, 1], c='blue', label='Predicted Non-peaks')
-    plt.legend()
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title('Predicted Peaks in Crystallography Images')
-    plt.show()
+def accuracy_metrics(y_test, y_pred):
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    
+    print(f'Precision: {precision}')
+    print(f'Recall: {recall}')
+    print(f'F1 score: {f1}')
+    
     
 def svm(image_array, conf_coord, downsample=True):
     label_array = labeled_array(image_array, conf_coord)
@@ -161,7 +165,10 @@ def svm(image_array, conf_coord, downsample=True):
     
     # split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X_flat, y_flat, test_size=0.2, random_state=42)
-    
+
+    # store for later
+    X_test_2 = X_test
+    y_test_2 = y_test 
     # downsample the majority class
     if downsample: 
         X_train, y_train = downsample_data(X_train, y_train)
@@ -178,7 +185,18 @@ def svm(image_array, conf_coord, downsample=True):
     # accuracy
     accuracy = grid_search.score(X_test, y_test)
     print(f'Accuracy with the best estimator: {accuracy}') # return 0.9999988974428944
-    visualize_peaks(X_test, y_pred)
+    
+    # confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    print(f'Confusion matrix:\n {cm}') 
+    
+    # pair confusion matrix
+    pcm = pair_confusion_matrix(y_test, y_pred)
+    print(f'Pair confusion matrix:\n {pcm}')
+    
+    # accuracy metrics
+    accuracy_metrics(y_pred, y_test)
+    
     return grid_search.best_estimator_, y_pred, accuracy
 
 def main_():
