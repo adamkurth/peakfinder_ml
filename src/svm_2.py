@@ -6,7 +6,7 @@ import glob
 from sklearn import svm 
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.svm import SVC as svc
-from sklean.utils import resample
+from sklearn.utils import resample
 
 from label_finder import(
     PeakThresholdProcessor,
@@ -118,7 +118,7 @@ def downsample_data(X, y, random_state=42):
     
     # reassemble the downsampled dataset and shuffle
     data_downsampled = np.vstack((majority_downsampled, minority_class))
-    np.shuffle(data_downsampled)
+    np.random.shuffle(data_downsampled)
     
     # split downsampled data into feature and labeled arrays
     X_downsampled = data_downsampled[:, :-1]
@@ -136,7 +136,7 @@ def svm(image_array, conf_coord, downsample=True):
     # view_neighborhood(conf_coord, label_array)
     
     print(f'Number of non-zero elements in X_flat: {np.count_nonzero(X_flat)}') # return 7400397 for X_flat
-    print(f'Number of non-zero elements in X_flat: {np.count_nonzero(y_flat)}') # return 93 for y_flat
+    print(f'Number of non-zero elements in y_flat: {np.count_nonzero(y_flat)}') # return 93 for y_flat
     
     classes = np.unique(y_flat)
     print(f'Types of classes: {classes}') # return [0 1]
@@ -154,7 +154,7 @@ def svm(image_array, conf_coord, downsample=True):
     y_pred = grid_search.predict(X_test)
     
     # cross validation
-    scores, mean_scores = svm_cross_validation(grid_search.best_estimator_, X, y, cv=5)
+    scores, mean_scores = svm_cross_validation(grid_search.best_estimator_, X_test, y_test, cv=5)
     
     # accuracy
     accuracy = grid_search.score(X_test, y_test)
