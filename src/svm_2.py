@@ -89,6 +89,7 @@ def svm_cross_validation(best_model, X, y, cv=5):
     Returns:
         scores, mean_scores: cross validation scores and mean scores
     """
+    y.ravel()
     scores = cross_val_score(best_model, X, y, cv=cv)
     print(f'Cross validation scores: {scores}')
     print(f'Average cross validation score: {np.mean(scores)}')
