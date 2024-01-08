@@ -138,6 +138,19 @@ def downsample_data(X, y, random_state=42):
     return X_downsampled, y_downsampled
     
 def accuracy_metrics(y_test, y_pred):
+    """Prints the accuracy metrics for the model.
+    Args:
+        y_test (np.array): testing data
+        y_pred (np.array): prediction data
+    Description:
+        Accuracy: Proportion of true positives and negatives from the total num of predictions
+        Confusion Matrix: 2x2 matrix of true negative (upper left), false positives (top right), 
+            false negatives (bottom left), and true positives (bottom right)
+        Precision: Ability of the classifier to not label poisitive sample that is negative.
+            .1 means 10% of positive predictions were incorrect
+        Recall: Ability of the classifier to find all positive samples.     
+        F1 Score: Harmonoic mean of the precision and recall, 1 is best, 0 is worst.
+    """
     precision = precision_score(y_test, y_pred)
     recall = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
@@ -195,7 +208,7 @@ def svm(image_array, conf_coord, downsample=True):
     print(f'Pair confusion matrix:\n {pcm}')
     
     # accuracy metrics
-    accuracy_metrics(y_pred, y_test)
+    accuracy_metrics(y_test, y_pred)
     
     return grid_search.best_estimator_, y_pred, accuracy
 
