@@ -2,12 +2,12 @@ import os
 import numpy as np
 import h5py as h5
 import glob 
+import matplotlib.pyplot as plt
 
 from sklearn import svm 
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.svm import SVC as svc
 from sklearn.utils import resample
-
 from label_finder import(
     PeakThresholdProcessor,
     ArrayRegion,
@@ -67,9 +67,11 @@ def svm_hyperparameter_tuning(X_train, y_train):
     Returns:
         grid_search: GridSearchCV object that is the result of the hyperparameter tuning
     """
+    print(f'Starting Hyperparameter tuning...')
     param_grid = {'C': [0.1, 1, 10, 100, 1000],
                     'gamma': [1, 0.1, 0.01, 0.001, 0.0001],
-                    'kernel': ['rbf']}
+                    'kernel': ['rbf']
+                }
     grid_search = GridSearchCV(svc(), param_grid, refit=True, verbose=2, cv=3)
     y_train_flat = y_train.ravel()
     grid_search.fit(X_train, y_train_flat)
@@ -77,6 +79,7 @@ def svm_hyperparameter_tuning(X_train, y_train):
     print(f'Best parameters: {grid_search.best_params_}')
     print(f'Best estimator: {grid_search.best_estimator_}')
     print(f'Best score: {grid_search.best_score_}')
+    print(f'Finishing Hyperparameter tuning...\n')
     return grid_search   
     
 def svm_cross_validation(best_model, X, y, cv=5):
@@ -89,10 +92,13 @@ def svm_cross_validation(best_model, X, y, cv=5):
     Returns:
         scores, mean_scores: cross validation scores and mean scores
     """
-    y.ravel()
+    print(f'Starting cross validation...')
+    print(f'Cross validation with {cv} folds...')
+    y = y.ravel()
     scores = cross_val_score(best_model, X, y, cv=cv)
     print(f'Cross validation scores: {scores}')
     print(f'Average cross validation score: {np.mean(scores)}')
+    print(f'Finishing cross validation...\n')
     return scores, np.mean(scores)
 
 def downsample_data(X, y, random_state=42):
@@ -105,6 +111,7 @@ def downsample_data(X, y, random_state=42):
     Returns: X_downsampled, y_downsampled: downsampled feature and label arrays
     """
     #combine X, y into single dataset for resampling
+    print(f'Starting downsampling...')
     data = np.hstack((X, y.reshape(-1, 1)))
     
     # identify the major and minority classes
@@ -124,7 +131,17 @@ def downsample_data(X, y, random_state=42):
     # split downsampled data into feature and labeled arrays
     X_downsampled = data_downsampled[:, :-1]
     y_downsampled = data_downsampled[:, -1]
+    print(f'Finishing downsampling...')
     return X_downsampled, y_downsampled
+    
+def visualize_peaks(X_test, y_pred):
+    plt.scatter(X_test[y_pred == 1, 0], X_test[y_pred == 1, 1], c='red', label='Predicted Peaks')
+    plt.scatter(X_test[y_pred == 0, 0], X_test[y_pred == 0, 1], c='blue', label='Predicted Non-peaks')
+    plt.legend()
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.title('Predicted Peaks in Crystallography Images')
+    plt.show()
     
 def svm(image_array, conf_coord, downsample=True):
     label_array = labeled_array(image_array, conf_coord)
@@ -145,6 +162,7 @@ def svm(image_array, conf_coord, downsample=True):
     # split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X_flat, y_flat, test_size=0.2, random_state=42)
     
+    # downsample the majority class
     if downsample: 
         X_train, y_train = downsample_data(X_train, y_train)
         
@@ -160,7 +178,7 @@ def svm(image_array, conf_coord, downsample=True):
     # accuracy
     accuracy = grid_search.score(X_test, y_test)
     print(f'Accuracy with the best estimator: {accuracy}') # return 0.9999988974428944
-
+    visualize_peaks(X_test, y_pred)
     return grid_search.best_estimator_, y_pred, accuracy
 
 def main_():
