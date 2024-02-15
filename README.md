@@ -1,9 +1,3 @@
----
-runme:
-  id: 01HK8HV8JYYZPJ0GX3M15E7PVD
-  version: v2.0
----
-
 # Peakfinding using Machine Learning
 
 Will be ongoing project to implement machine learning techniques for peakfinding in crystallography experimental imaging data.
